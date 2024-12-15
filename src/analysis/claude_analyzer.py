@@ -7,6 +7,7 @@ from ..config import CLAUDE_API_KEY
 
 class EmissionsAnalyzer:
     def __init__(self):
+        # Updated client initialization
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
         self.target_sections = [
             "Greenhouse Gas Emissions",
@@ -70,14 +71,17 @@ class EmissionsAnalyzer:
 
         try:
             logging.info("Sending request to Claude...")
+            # Updated method for creating messages
             response = self.client.messages.create(
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }],
                 model="claude-3-sonnet-20240229",
                 max_tokens=4000,
-                temperature=0
+                temperature=0,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
             )
             
             if response.content:
@@ -86,7 +90,7 @@ class EmissionsAnalyzer:
                 
                 # Try to extract JSON even if there's surrounding text
                 try:
-                    json_match = re.search(r'({[^{]*"scope_1".*"scope_2".*})', content)
+                    json_match = re.search(r'({[^{]*"scope_1".*"scope_2".*})', content, re.DOTALL)
                     if json_match:
                         content = json_match.group(1)
                 except:
