@@ -20,7 +20,7 @@ if not CLAUDE_API_KEY or not BRAVE_API_KEY:
     raise ValueError("Missing required API keys in .env file")
 
 # Search Configuration
-SEARCH_YEARS = [2024, 2023]  # Years to search for reports
+SEARCH_YEARS = [2024, 2023, 2022]  # Years to search for reports
 MAX_RESULTS_PER_SEARCH = 3
 
 # Document Processing
