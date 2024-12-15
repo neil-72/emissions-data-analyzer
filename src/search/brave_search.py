@@ -51,8 +51,11 @@ class BraveSearchClient:
                             title = raw_title.strip().lower()
                             logging.debug(f"Raw title: '{raw_title}' | Normalized title: '{title}'")
 
-                            # Validate the year is in the title
-                            if str(year) in title and company_name.lower() in title:
+                            # Check presence of year and optionally company name
+                            year_present = str(year) in title
+                            company_present = company_name.lower() in title
+
+                            if year_present:
                                 logging.info(f"Found valid report: {url}")
                                 return {
                                     "url": url,
@@ -60,7 +63,13 @@ class BraveSearchClient:
                                     "year": year
                                 }
 
-                            logging.info(f"Skipping result: Year {year} not in title '{raw_title}'")
+                            # Log missing elements for debugging
+                            missing_elements = []
+                            if not year_present:
+                                missing_elements.append("year")
+                            if not company_present:
+                                missing_elements.append("company name")
+                            logging.info(f"Skipping result: Missing {', '.join(missing_elements)} in title '{raw_title}'")
 
                 except requests.RequestException as e:
                     logging.error(f"Network error in search '{search_term}': {str(e)}")
