@@ -70,15 +70,18 @@ class EmissionsAnalyzer:
 
         try:
             logging.info("Sending request to Claude...")
-            response = self.client.complete(
-                prompt=prompt,
+            response = self.client.messages.create(
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
                 model="claude-3-sonnet-20240229",
-                max_tokens_to_sample=4000,
+                max_tokens=4000,
                 temperature=0
             )
             
-            if response.completion:
-                content = response.completion
+            if response.content:
+                content = response.content[0].text
                 logging.info("Response received from Claude")
                 
                 # Try to extract JSON even if there's surrounding text
@@ -86,8 +89,8 @@ class EmissionsAnalyzer:
                     json_match = re.search(r'({[^{]*"scope_1".*"scope_2".*})', content)
                     if json_match:
                         content = json_match.group(1)
-                except Exception as e:
-                    logging.warning(f"Error processing JSON match: {str(e)}")
+                except:
+                    pass
                     
                 data = self._validate_emissions_data(content)
                 return data
