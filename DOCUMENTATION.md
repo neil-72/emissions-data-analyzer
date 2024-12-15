@@ -22,11 +22,28 @@ This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from 
   - Retry logic for failed downloads
   - Alternative URL generation
   - Web archive fallback
-  - Improved table extraction
+  - Page-level emissions data detection
 - **Main Class**: `DocumentHandler`
-  - `extract_text_from_pdf()`: PDF processing with retries
+  - `extract_text_from_pdf()`: PDF processing with retries and page markers
   - `extract_text_from_webpage()`: HTML processing
   - `get_document_content()`: Main entry point
+  - `EMISSIONS_KEYWORDS`: List of key terms used to detect data
+
+### Primary Sections
+The system specifically looks for these terms when processing PDFs:
+- Greenhouse Gas Emissions
+- Climate Change + numbers
+- Environmental Data + "scope"
+- Direct/Indirect emissions
+- CO2e metrics
+- Year + numbers pattern
+
+### Table Indicators
+Common patterns that indicate valuable emissions data:
+- Table headers with 'scope'
+- Numeric sequences with units (tCO2e, MTCO2e)
+- Year columns followed by numbers
+- Indented number lists
 
 ### 3. Data Analysis (`src/analysis/claude_analyzer.py`)
 - **Purpose**: Extracts emissions data using Claude AI
