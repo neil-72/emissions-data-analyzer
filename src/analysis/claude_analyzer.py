@@ -27,7 +27,7 @@ class EmissionsAnalyzer:
             logging.info("No relevant sections found, using full text...")
             sections = text
 
-        # Strong instructions in system message to ensure JSON-only output:
+        # Strong instructions for JSON-only output
         system_instructions = (
             "You are an assistant that ONLY returns valid JSON with no extra text. "
             "If you cannot find any relevant data, return the specified JSON with null values. "
@@ -69,19 +69,22 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
 
         try:
             logging.info("Sending request to Claude...")
-            response = self.client.completions.create(
-                model="claude-2",  # or your chosen Claude model
-                max_tokens_to_sample=4000,
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229",
+                system=system_instructions,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
                 temperature=0,
-                stop_sequences=["\n\n"],  # Ensures no text after JSON
-                prompt=f"{Anthropic.SYSTEM_PROMPT} {system_instructions}\n\n{Anthropic.HUMAN_PROMPT} {prompt}\n\n{Anthropic.AI_PROMPT}",
+                max_tokens=4000
             )
 
-            if "completion" in response and response["completion"].strip():
-                content = response["completion"].strip()
+            if response.content:
+                content = response.content[0].text
                 logging.info("Response received from Claude")
 
-                # Try to directly parse the entire response as JSON.
+                # Try to directly parse the entire response as JSON
                 data = self._parse_json_response(content)
                 if data is None:
                     # Try regex-based extraction as a fallback
