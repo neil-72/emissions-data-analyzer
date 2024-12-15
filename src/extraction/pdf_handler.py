@@ -217,7 +217,7 @@ class DocumentHandler:
         # Look for units
         has_units = any(re.search(unit, table_text) for unit in DocumentHandler.UNIT_KEYWORDS)
         
-        # Look for numbers in typical emissions range (100-1M)
+        # Look for numbers in typical emissions range (at least 3 digits)
         has_valid_numbers = bool(re.search(r'\b\d{3,8}(?:\.\d+)?\b', table_text))
         
         return has_scope and (has_units or has_valid_numbers)
@@ -225,19 +225,26 @@ class DocumentHandler:
     @staticmethod
     def _filter_emissions_rows(table: List[List[str]]) -> List[List[str]]:
         """Filter rows that contain emissions-related data."""
-        filtered_rows = []
+        if not table or len(table) < 2:
+            return []
         
-        # Always keep header row
-        if table and len(table) > 0:
-            filtered_rows.append(table[0])
-            
-        # Filter other rows
+        # Keep the header row
+        filtered_rows = [table[0]]
+        
+        # Check if header indicates this is an emissions table
+        header = " ".join(str(cell).lower() for cell in table[0] if cell)
+        is_emissions_table = any(re.search(pattern, header) for pattern in DocumentHandler.EMISSIONS_KEYWORDS)
+        
         for row in table[1:]:
             row_text = " ".join(str(cell) for cell in row if cell)
-            if any(re.search(pattern, row_text.lower()) for pattern in DocumentHandler.EMISSIONS_KEYWORDS):
+            # Keep row if either:
+            # 1. It explicitly mentions scope or emissions
+            # 2. It's part of an emissions table and has numeric data
+            if (any(re.search(pattern, row_text.lower()) for pattern in DocumentHandler.EMISSIONS_KEYWORDS) or
+                (is_emissions_table and re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', row_text))):
                 filtered_rows.append(row)
                 
-        return filtered_rows if len(filtered_rows) > 1 else []  # Return empty if only header
+        return filtered_rows if len(filtered_rows) > 1 else []
 
     @staticmethod
     def _format_table(table: List[List[str]]) -> str:
@@ -312,4 +319,3 @@ class DocumentHandler:
             return DocumentHandler.extract_text_from_pdf(url)
         else:
             return DocumentHandler.extract_text_from_webpage(url)
-
