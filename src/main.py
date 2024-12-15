@@ -15,7 +15,7 @@ class EmissionsTracker:
         """Process a company to extract emissions data."""
         try:
             # Step 1: Search for report
-            print(f"Searching for {company_name}'s sustainability report...")
+            print(f"\nSearching for {company_name}'s sustainability report...")
             report_data = self.search_client.search_sustainability_report(company_name)
             
             if not report_data:
@@ -23,12 +23,18 @@ class EmissionsTracker:
                 return None
 
             # Step 2: Extract text
-            print(f"Found report from {report_data['year']}. Processing...")
+            print(f"\nFound report from {report_data['year']}.")
+            print(f"URL: {report_data['url']}")
+            
             text_content = DocumentHandler.get_document_content(report_data['url'])
             
             if not text_content:
                 print("Unable to extract text from report")
                 return None
+
+            print(f"\nSuccessfully extracted text ({len(text_content)} characters)")
+            print("Sample of extracted text:")
+            print(text_content[:500] + "...\n")
 
             # Step 3: Analyze content
             print("Analyzing report content...")
@@ -53,6 +59,7 @@ class EmissionsTracker:
 
         except Exception as e:
             print(f"Error processing {company_name}: {str(e)}")
+            print(f"Error type: {type(e)}")
             return None
 
     def _save_results(self, company_name: str, data: Dict):
