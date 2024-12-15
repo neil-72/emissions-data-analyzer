@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from ..config import MAX_PDF_SIZE
 
 class DocumentHandler:
+    # Emissions-related keywords
     EMISSIONS_KEYWORDS = [
         # Scope patterns with variants
         r'(?i)scope\s*1(?:[,\s]|$)', r'(?i)scope\s*2(?:[,\s]|$)', r'(?i)scope\s*3(?:[,\s]|$)',
@@ -21,6 +22,18 @@ class DocumentHandler:
         r'(?i)carbon offsets'
     ]
 
+    # Data section indicators
+    SECTION_HINTS = [
+        r'(?i)appendix',
+        r'(?i)data',
+        r'(?i)emissions\s+data',
+        r'(?i)total\s+emissions',
+        r'(?i)corporate\s+emissions',
+        r'(?i)comprehensive\s+emissions',
+        r'(?i)environmental\s+data'
+    ]
+
+    # Unit-related patterns
     UNIT_KEYWORDS = [
         r'(?i)metric tons?', r'(?i)tonnes?', r'(?i)tons?', r'(?i)kg', r'(?i)kilograms?',
         r'(?i)mtco2e?', r'(?i)000\s*tonnes?', r'(?i)mt\s*co2'
@@ -36,6 +49,7 @@ class DocumentHandler:
 
     @staticmethod
     def _normalize_unit(unit_text: str) -> str:
+        """Normalize unit text to standard format."""
         for pattern, normalized_unit in DocumentHandler.UNIT_NORMALIZATION.items():
             if re.search(pattern, unit_text):
                 return normalized_unit
@@ -66,65 +80,102 @@ class DocumentHandler:
         return None
 
     @staticmethod
+    def _extract_with_plumber(pdf_content: io.BytesIO) -> Optional[str]:
+        """Extract text and tables from a PDF using pdfplumber with enhanced data section handling."""
+        try:
+            with pdfplumber.open(pdf_content) as pdf:
+                relevant_content = []
+                total_chars = 0
+                max_chars = 50000  # Limit total characters
+                
+                # First pass - look for data tables in appendix/data sections
+                for page_num, page in enumerate(pdf.pages):
+                    page_text = page.extract_text() or ""
+                    
+                    # Check if this is a data/appendix section
+                    if any(re.search(hint, page_text) for hint in DocumentHandler.SECTION_HINTS):
+                        tables = page.extract_tables()
+                        for table in tables:
+                            if DocumentHandler._table_has_emissions_data(table):
+                                filtered_rows = DocumentHandler._filter_emissions_rows(table)
+                                if filtered_rows:
+                                    table_text = DocumentHandler._format_table(filtered_rows)
+                                    if total_chars + len(table_text) < max_chars:
+                                        relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{table_text}")
+                                        total_chars += len(table_text)
+
+                # Second pass - look for other emissions content if needed
+                if total_chars < max_chars:
+                    for page_num, page in enumerate(pdf.pages):
+                        if total_chars >= max_chars:
+                            break
+                            
+                        page_text = page.extract_text() or ""
+                        if DocumentHandler._has_emissions_data(page_text):
+                            context_text = DocumentHandler._extract_with_context(pdf, page_num)
+                            if context_text and total_chars + len(context_text) < max_chars:
+                                relevant_content.append(context_text)
+                                total_chars += len(context_text)
+
+                if not relevant_content:
+                    logging.warning("No emissions-related content found.")
+                    return None
+                
+                result = "\n".join(relevant_content)
+                logging.info(f"Extracted {len(result):,} characters of relevant content")
+                return result
+
+        except Exception as e:
+            logging.error(f"Error extracting data with pdfplumber: {str(e)}")
+            return None
+
+    @staticmethod
     def _process_large_pdf(pdf_bytes: bytes) -> Optional[str]:
         """Process large PDFs by extracting text in chunks."""
         try:
             pdf_stream = io.BytesIO(pdf_bytes)
             with pdfplumber.open(pdf_stream) as pdf:
                 relevant_content = []
+                total_chars = 0
+                max_chars = 50000
+
+                # Prioritize data/appendix sections
                 for page_num, page in enumerate(pdf.pages):
+                    if total_chars >= max_chars:
+                        break
+
                     page_text = page.extract_text() or ""
-                    # Use context extraction if emissions data is found
-                    if DocumentHandler._has_emissions_data(page_text):
-                        context_text = DocumentHandler._extract_with_context(pdf, page_num)
-                        if context_text:
-                            relevant_content.append(context_text)
+                    is_data_section = any(re.search(hint, page_text) for hint in DocumentHandler.SECTION_HINTS)
                     
-                    # Extract tables
-                    tables = page.extract_tables()
-                    for table in tables:
-                        if DocumentHandler._table_has_emissions_data(table):
-                            filtered_rows = DocumentHandler._filter_emissions_rows(table)
-                            if filtered_rows:
-                                formatted_table = DocumentHandler._format_table(filtered_rows)
-                                relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{formatted_table}")
+                    # Extract tables from data sections first
+                    if is_data_section:
+                        tables = page.extract_tables()
+                        for table in tables:
+                            if DocumentHandler._table_has_emissions_data(table):
+                                filtered_rows = DocumentHandler._filter_emissions_rows(table)
+                                if filtered_rows:
+                                    table_text = DocumentHandler._format_table(filtered_rows)
+                                    if total_chars + len(table_text) < max_chars:
+                                        relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{table_text}")
+                                        total_chars += len(table_text)
+
+                # If we still have room, look for other emissions data
+                if total_chars < max_chars:
+                    for page_num, page in enumerate(pdf.pages):
+                        if total_chars >= max_chars:
+                            break
+                            
+                        page_text = page.extract_text() or ""
+                        if DocumentHandler._has_emissions_data(page_text):
+                            context_text = DocumentHandler._extract_with_context(pdf, page_num)
+                            if context_text and total_chars + len(context_text) < max_chars:
+                                relevant_content.append(context_text)
+                                total_chars += len(context_text)
 
                 return "\n".join(relevant_content) if relevant_content else None
+
         except Exception as e:
             logging.error(f"Error processing large PDF: {str(e)}")
-            return None
-
-    @staticmethod
-    def _extract_with_plumber(pdf_content: io.BytesIO) -> Optional[str]:
-        """Extract text and tables from a PDF using pdfplumber."""
-        try:
-            with pdfplumber.open(pdf_content) as pdf:
-                relevant_content = []
-                for page_num, page in enumerate(pdf.pages):
-                    page_text = page.extract_text() or ""
-                    # If emissions data is found on this page, extract with context
-                    if DocumentHandler._has_emissions_data(page_text):
-                        context_text = DocumentHandler._extract_with_context(pdf, page_num)
-                        if context_text:
-                            relevant_content.append(context_text)
-
-                    # Extract tables from this page
-                    tables = page.extract_tables()
-                    for table in tables:
-                        if DocumentHandler._table_has_emissions_data(table):
-                            filtered_rows = DocumentHandler._filter_emissions_rows(table)
-                            if filtered_rows:
-                                formatted_table = DocumentHandler._format_table(filtered_rows)
-                                relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{formatted_table}")
-
-                if not relevant_content:
-                    logging.warning("No emissions-related content found.")
-                    return None
-                
-                return "\n".join(relevant_content)
-
-        except Exception as e:
-            logging.error(f"Error extracting data with pdfplumber: {str(e)}")
             return None
 
     @staticmethod
@@ -157,34 +208,36 @@ class DocumentHandler:
         if not table or len(table) < 2:
             return False
             
-        # Check header/first row for scope/tier and unit info
-        header = " ".join(str(cell).lower() for cell in table[0] if cell)
-        has_scope = any(re.search(pattern, header) for pattern in DocumentHandler.EMISSIONS_KEYWORDS)
-        has_units = any(re.search(unit, header) for unit in DocumentHandler.UNIT_KEYWORDS)
-
-        # If scope/units are in header, verify rows for numbers
-        if has_scope or has_units:
-            for row in table[1:]:
-                row_text = " ".join(str(cell).lower() for cell in row if cell)
-                if re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', row_text):
-                    return True
-
-        # Check row-level if header doesn't suffice
-        for row in table:
-            row_text = " ".join(str(cell).lower() for cell in row if cell)
-            if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS) and re.search(r'\d+', row_text):
-                return True
-        return False
+        # Check whole table content
+        table_text = " ".join(" ".join(str(cell).lower() for cell in row if cell) for row in table)
+        
+        # Look for scope mentions
+        has_scope = any(re.search(pattern, table_text) for pattern in DocumentHandler.EMISSIONS_KEYWORDS)
+        
+        # Look for units
+        has_units = any(re.search(unit, table_text) for unit in DocumentHandler.UNIT_KEYWORDS)
+        
+        # Look for numbers in typical emissions range (100-1M)
+        has_valid_numbers = bool(re.search(r'\b\d{3,8}(?:\.\d+)?\b', table_text))
+        
+        return has_scope and (has_units or has_valid_numbers)
 
     @staticmethod
     def _filter_emissions_rows(table: List[List[str]]) -> List[List[str]]:
         """Filter rows that contain emissions-related data."""
         filtered_rows = []
-        for row in table:
+        
+        # Always keep header row
+        if table and len(table) > 0:
+            filtered_rows.append(table[0])
+            
+        # Filter other rows
+        for row in table[1:]:
             row_text = " ".join(str(cell) for cell in row if cell)
             if any(re.search(pattern, row_text.lower()) for pattern in DocumentHandler.EMISSIONS_KEYWORDS):
                 filtered_rows.append(row)
-        return filtered_rows
+                
+        return filtered_rows if len(filtered_rows) > 1 else []  # Return empty if only header
 
     @staticmethod
     def _format_table(table: List[List[str]]) -> str:
@@ -259,3 +312,4 @@ class DocumentHandler:
             return DocumentHandler.extract_text_from_pdf(url)
         else:
             return DocumentHandler.extract_text_from_webpage(url)
+
