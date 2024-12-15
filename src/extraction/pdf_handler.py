@@ -12,15 +12,17 @@ class DocumentHandler:
     EMISSIONS_KEYWORDS = [
         # Scope patterns with variants
         r'(?i)scope\s*1(?:[,\s]|$)', r'(?i)scope\s*2(?:[,\s]|$)', r'(?i)scope\s*3(?:[,\s]|$)',
+        r'(?i)scope\s*1\s*and\s*2', r'(?i)location-based', r'(?i)market-based',
         r'(?i)tier\s*1(?:[,\s]|$)', r'(?i)tier\s*2(?:[,\s]|$)', r'(?i)tier\s*3(?:[,\s]|$)',
-        # Original keywords with case-insensitive matching
+        # General emissions terms
         r'(?i)ghg emissions', r'(?i)co2', r'(?i)greenhouse gas',
-        r'(?i)carbon emissions', r'(?i)carbon footprint',
-        r'(?i)direct emissions', r'(?i)indirect emissions'
+        r'(?i)carbon emissions', r'(?i)carbon footprint', r'(?i)gross emissions',
+        r'(?i)net carbon footprint', r'(?i)total emissions', r'(?i)subtotal emissions',
+        r'(?i)carbon offsets'
     ]
     UNIT_KEYWORDS = [
         r'(?i)metric tons?', r'(?i)tonnes?', r'(?i)tons?', r'(?i)kg', r'(?i)kilograms?',
-        r'(?i)mtco2e?'  # Common CO2 equivalent unit
+        r'(?i)mtco2e?', r'(?i)000\s*tonnes?', r'(?i)mt\s*co2'
     ]
 
     @staticmethod
@@ -81,9 +83,8 @@ class DocumentHandler:
         if not text:
             return False
         text_lower = text.lower()
-        # Add number pattern check alongside keywords
         has_keywords = any(re.search(keyword, text_lower) for keyword in DocumentHandler.EMISSIONS_KEYWORDS)
-        has_numbers = bool(re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', text_lower))
+        has_numbers = bool(re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', text_lower))  # Handles scientific notation
         return has_keywords and has_numbers
 
     @staticmethod
@@ -94,35 +95,21 @@ class DocumentHandler:
             
         # Check header/first row for scope/tier and unit info
         header = " ".join(str(cell).lower() for cell in table[0] if cell)
-        has_scope = any(re.search(pattern, header) for pattern in [
-            r'(?i)scope\s*[123]', r'(?i)tier\s*[123]'
-        ])
+        has_scope = any(re.search(pattern, header) for pattern in DocumentHandler.EMISSIONS_KEYWORDS)
         has_units = any(re.search(unit, header) for unit in DocumentHandler.UNIT_KEYWORDS)
-        
+
+        # If scope/units are in header, verify rows for numbers
         if has_scope or has_units:
-            # If header has scope or units, check other rows for the missing element
             for row in table[1:]:
                 row_text = " ".join(str(cell).lower() for cell in row if cell)
-                # If header had scope, look for numbers/units
-                if has_scope and re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', row_text):
+                if re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', row_text):  # Numbers in rows
                     return True
-                # If header had units, look for scope references
-                if has_units and any(re.search(pattern, row_text) for pattern in [
-                    r'(?i)scope\s*[123]', r'(?i)tier\s*[123]'
-                ]):
-                    return True
-        
-        # Check each row for emissions keywords
-        for i, row in enumerate(table):
+
+        # Keyword and number check for specific rows
+        for row in table:
             row_text = " ".join(str(cell).lower() for cell in row if cell)
-            if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS):
-                # Found keyword, check this and adjacent rows for numbers
-                start_idx = max(0, i - 1)
-                end_idx = min(len(table), i + 2)
-                for check_row in table[start_idx:end_idx]:
-                    check_text = " ".join(str(cell).lower() for cell in check_row if cell)
-                    if re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', check_text):
-                        return True
+            if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS) and re.search(r'\d+', row_text):
+                return True
         return False
 
     @staticmethod
@@ -146,22 +133,9 @@ class DocumentHandler:
         return "\n".join(formatted_rows)
 
     @staticmethod
-    def _get_alternative_urls(url: str) -> List[str]:
-        """Generate alternative URLs for the PDF."""
-        base_url, filename = url.rsplit('/', 1)
-        return [
-            f"https://web.archive.org/web/2024/{url}",
-            urljoin(base_url + '/documents/', filename),
-            urljoin(base_url + '/downloads/', filename),
-        ]
-
-    @staticmethod
     def extract_text_from_webpage(url: str) -> Optional[str]:
         """Extract text from a webpage."""
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-
+        headers = {'User-Agent': 'Mozilla/5.0'}
         try:
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
@@ -171,14 +145,10 @@ class DocumentHandler:
                 element.decompose()
 
             main_content = soup.find(["main", "article", "div", "body"])
-            if main_content:
-                text = main_content.get_text()
-            else:
-                text = soup.get_text()
+            text = main_content.get_text() if main_content else soup.get_text()
 
             lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            return ' '.join(chunk for chunk in chunks if chunk)
+            return ' '.join(phrase for line in lines for phrase in line.split("  ") if phrase)
 
         except Exception as e:
             logging.error(f"Error extracting webpage text: {str(e)}")
