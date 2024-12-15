@@ -3,11 +3,10 @@
 A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
 
 ## Key Features
-- Smart section targeting to find emissions data in complex reports
-- Robust validation of extracted data with typical range checking
-- Support for multiple report formats (PDF, web-based)
-- Detailed logging for debugging and verification
-- Fallback strategies when primary data extraction fails
+1. Smart section targeting to locate emissions data in complex reports, prioritizing relevant sections and keywords.
+2. Robust validation to ensure extracted data falls within typical corporate ranges.
+3. Support for multiple report formats, including PDF and web-based reports.
+4. Detailed logging for debugging and verification of results.
 
 ## Setup
 
@@ -68,6 +67,7 @@ The system validates emissions data against typical corporate ranges:
 ```
 
 ## Target Sections
+
 The system specifically looks for emissions data in:
 - Greenhouse Gas Emissions sections
 - Climate Change sections
@@ -76,10 +76,11 @@ The system specifically looks for emissions data in:
 - GRI/SASB indices
 
 ## Notes
-- Only searches for official company sustainability reports in PDF format
-- Prioritizes most recent data (2024, then 2023)
-- Results are saved to the `output` directory
-- Includes validation of data ranges and formats
-- Multiple fallback strategies if primary data extraction fails
+
+1. Only searches for official company sustainability reports in PDF format.
+2. Prioritizes the most recent data (2024, then 2023).
+3. Results are saved to the `output` directory.
+4. Includes validation of data ranges and formats.
+5. Employs multiple fallback strategies if primary data extraction fails.
 
 See [DOCUMENTATION.md](DOCUMENTATION.md) for technical details.
