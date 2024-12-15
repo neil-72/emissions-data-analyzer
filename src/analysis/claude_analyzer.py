@@ -68,7 +68,7 @@ class EmissionsAnalyzer:
         {sections[:50000]}
         """
 
-         try:
+        try:
             logging.info("Sending request to Claude...")
             response = self.client.complete(
                 prompt=prompt,
@@ -86,8 +86,8 @@ class EmissionsAnalyzer:
                     json_match = re.search(r'({[^{]*"scope_1".*"scope_2".*})', content)
                     if json_match:
                         content = json_match.group(1)
-                except:
-                    pass
+                except Exception as e:
+                    logging.warning(f"Error processing JSON match: {str(e)}")
                     
                 data = self._validate_emissions_data(content)
                 return data
