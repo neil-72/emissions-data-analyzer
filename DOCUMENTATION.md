@@ -22,6 +22,7 @@ This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from 
   - Retry logic for failed downloads
   - Alternative URL generation
   - Web archive fallback
+  - Improved table extraction
 - **Main Class**: `DocumentHandler`
   - `extract_text_from_pdf()`: PDF processing with retries
   - `extract_text_from_webpage()`: HTML processing
@@ -31,80 +32,72 @@ This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from 
 - **Purpose**: Extracts emissions data using Claude AI
 - **Key Features**:
   - Structured data extraction
-  - Handles multiple years of data
-  - Provides context and trends
+  - Smart section targeting
+  - Data validation
+  - Multiple extraction strategies
 - **Main Class**: `EmissionsAnalyzer`
-  - `extract_emissions_data()`: Processes text and returns structured data
+  - `extract_emissions_data()`: Main extraction method
+  - `_extract_relevant_sections()`: Targets key report sections
+  - `_validate_emissions_data()`: Validates extracted data
 
 ### 4. Main Application (`src/main.py`)
 - **Purpose**: Orchestrates the entire process
 - **Key Features**:
   - End-to-end processing pipeline
-  - Error handling
+  - Enhanced error handling
   - Results storage
+  - Detailed logging
 - **Main Class**: `EmissionsTracker`
   - `process_company()`: Primary method for processing a company
 
-## Data Flow
-1. User inputs company name
-2. System searches for sustainability report
-3. Downloads and extracts text from found document
-4. Analyzes text for emissions data
-5. Returns structured results
+## Data Validation
 
-## Output Format
-```json
-{
-    "company": "string",
-    "report_url": "string",
-    "report_year": number,
-    "emissions_data": {
-        "scope_1": {
-            "value": number,
-            "unit": "string",
-            "year": number
-        },
-        "scope_2": {
-            "value": number,
-            "unit": "string",
-            "year": number
-        },
-        "context": "string"
-    }
-}
-```
+### Validation Ranges
+- **Scope 1**: 100 - 10,000,000 metric tons CO2e
+- **Scope 2**: 1,000 - 20,000,000 metric tons CO2e
 
-## Environment Setup
-1. Create virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+### Data Quality Checks
+1. Numeric value validation
+2. Unit format verification
+3. Year format checking
+4. Range validation
+5. Cross-reference between scopes
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+## Target Sections
 
-3. Create .env file with API keys:
-```env
-CLAUDE_API_KEY=your_claude_api_key
-BRAVE_API_KEY=your_brave_api_key
-```
+### Primary Sections
+- Greenhouse Gas Emissions
+- Climate Change
+- Environmental Data
+- Scope 1 and 2
+- GHG Emissions
+- Carbon Footprint
 
-## Usage
-```python
-from src.main import EmissionsTracker
-
-tracker = EmissionsTracker()
-result = tracker.process_company("Company Name")
-print(result)
-```
+### Table Indicators
+- Emissions Data
+- GHG Data
+- Environmental Performance
+- Metrics and Targets
 
 ## Error Handling
-- PDF Access Errors: System tries alternative URLs and web archive
-- Network Issues: Implements retry logic with exponential backoff
-- Parse Errors: Graceful fallback with detailed error reporting
+
+### PDF Access Issues
+1. Retry with exponential backoff
+2. Try alternative URLs
+3. Check web archive
+4. Use alternative document formats
+
+### Data Extraction Issues
+1. Try targeted section extraction
+2. Fall back to full document search
+3. Look for alternative data sources
+4. Check for table-specific formats
+
+### Validation Issues
+1. Check for unit conversion errors
+2. Verify year alignment
+3. Compare with typical ranges
+4. Look for data entry patterns
 
 ## Known Limitations
 1. Some companies block PDF downloads
