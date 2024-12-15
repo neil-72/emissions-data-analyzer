@@ -68,15 +68,17 @@ class EmissionsAnalyzer:
         {sections[:50000]}
         """
 
-        try:
+         try:
             logging.info("Sending request to Claude...")
-            response = self.client.messages.create(
+            response = self.client.complete(
+                prompt=prompt,
                 model="claude-3-sonnet-20240229",
-                messages=[{"role": "user", "content": prompt}]
+                max_tokens_to_sample=4000,
+                temperature=0
             )
             
-            if hasattr(response, 'content') and len(response.content) > 0:
-                content = response.content[0].text
+            if response.completion:
+                content = response.completion
                 logging.info("Response received from Claude")
                 
                 # Try to extract JSON even if there's surrounding text
