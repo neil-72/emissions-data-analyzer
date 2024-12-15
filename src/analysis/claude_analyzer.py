@@ -1,29 +1,30 @@
 from anthropic import Anthropic
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import re
 import logging
 import json
 from ..config import CLAUDE_API_KEY
 
+
 class EmissionsAnalyzer:
     def __init__(self):
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
-        
-        # Comprehensive target sections based on screenshots and patterns
+
+        # Comprehensive target sections based on observations and patterns
         self.target_sections = [
             "Greenhouse Gas Emissions", "Climate Change", "Environmental Data",
-            "Scope 1", "Scope 2", "Scope 3", "Scope 1 and 2", "Direct emissions", 
+            "Scope 1", "Scope 2", "Scope 3", "Scope 1 and 2", "Direct emissions",
             "Indirect emissions", "Carbon Footprint", "Carbon removals", "Corporate Emissions",
             "Location-based emissions", "Market-based emissions", "GHG emissions intensity",
-            "Subtotal emissions", "Total net carbon footprint", "Product Life Cycle Emissions", 
-            "Purchased goods and services", "Upstream impacts", "Assessment of progress", 
+            "Subtotal emissions", "Total net carbon footprint", "Product Life Cycle Emissions",
+            "Purchased goods and services", "Upstream impacts", "Assessment of progress",
             "Climate and Efficiency", "Environmental Performance", "ESG Metrics"
         ]
-        
-        # Comprehensive table keywords to ensure broader coverage
+
+        # Comprehensive table keywords for broader coverage
         self.table_keywords = [
-            "Emissions Data", "GHG Data", "Scope 1", "Scope 2", "Scope 3", 
-            "Market-based emissions", "Location-based emissions", "Environmental Performance", 
+            "Emissions Data", "GHG Data", "Scope 1", "Scope 2", "Scope 3",
+            "Market-based emissions", "Location-based emissions", "Environmental Performance",
             "Metrics and Targets", "Climate Data", "Direct emissions", "Indirect emissions",
             "Subtotal emissions", "Total emissions", "Business travel", "Employee commuting",
             "Energy consumption", "Assessment of progress", "Total carbon emissions"
@@ -33,12 +34,13 @@ class EmissionsAnalyzer:
         """Extract emissions data using Claude."""
         logging.info("Starting emissions data extraction...")
 
+        # Extract relevant sections from the text
         sections = self._extract_relevant_sections(text, page_threshold=20)
         if not sections.strip():
             logging.info("No relevant sections found in priority pages, using full text...")
             sections = text
 
-        # Instructions for JSON-only Claude output
+        # Instructions for Claude to return JSON-only data
         system_instructions = (
             "You are an assistant that ONLY returns valid JSON with no extra text. "
             "If you cannot find any relevant data, return the specified JSON with null values. "
@@ -116,11 +118,11 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
 
     def _extract_relevant_sections(self, text: str, page_threshold: int = 20) -> str:
         """
-        Extract relevant emissions-related sections, prioritizing the last few pages.
+        Extract relevant emissions-related sections, prioritizing the first and last few pages.
         """
         lines = text.split('\n')
         pages = self._split_text_into_pages(lines)
-        prioritized_pages = pages[-page_threshold:]
+        prioritized_pages = pages[:page_threshold] + pages[-page_threshold:]
 
         sections = []
         for page in prioritized_pages:
