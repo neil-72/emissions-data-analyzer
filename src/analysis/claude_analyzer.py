@@ -30,7 +30,7 @@ class EmissionsAnalyzer:
         """
 
         try:
-            response = self.client.messages.create(
+            response = self.client.beta.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=1024,
                 messages=[{
