@@ -5,7 +5,6 @@ from typing import Dict, Optional
 from anthropic import Anthropic
 from ..config import CLAUDE_API_KEY
 
-
 class EmissionsAnalyzer:
     def __init__(self):
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
@@ -37,7 +36,7 @@ class EmissionsAnalyzer:
         sections = self._extract_relevant_sections(text)
         if not sections.strip():
             logging.info("No prioritized sections found, using entire text as fallback.")
-            sections = text[:100000]
+            sections = text[:50000]  # Reduced from 100000 to stay within token limits
 
         # System instructions: return ONLY the JSON, no extra text
         system_instructions = (
@@ -47,37 +46,14 @@ class EmissionsAnalyzer:
             "No explanations, no formatting outside of the JSON."
         )
 
-        # Updated user prompt to include previous years and sector
+        # Shortened prompt while keeping essential instructions
         prompt = f"""
-You are analyzing a corporate sustainability report. Your goal is to find:
-- Scope 1 and Scope 2 greenhouse gas (GHG) emissions data for the reported year.
-- Any available previous years’ Scope 1 and Scope 2 data mentioned in the text.
-- The company’s sector, if identifiable from the text or the company name.
+Analyze this sustainability report text. Find and return ONLY:
+1. Current Scope 1 & 2 GHG emissions
+2. Previous years' Scope 1 & 2 data if available
+3. Company sector if mentioned
 
-**Instructions:**
-- Return ONLY a JSON object and NOTHING else.
-- The ONLY keys allowed are: "scope_1", "scope_2", "source_location", "previous_years_data", "sector".
-- "previous_years_data" should be an object mapping years (YYYY) to scope_1 and scope_2 data in the same format as the current year:
-    {{
-      "YYYY": {{
-        "scope_1": {{
-          "value": <number or null>,
-          "unit": "metric tons CO2e",
-          "year": <YYYY or null>
-        }},
-        "scope_2": {{
-          "value": <number or null>,
-          "unit": "metric tons CO2e",
-          "year": <YYYY or null>
-        }}
-      }},
-      ...
-    }}
-  If no previous years’ data is found, "previous_years_data" should be null.
-- The "sector" should be a string if found, otherwise null.
-
-Your final JSON must have this format:
-
+Return ONLY this JSON format, no other text:
 {{
   "scope_1": {{
     "value": <number or null>,
@@ -89,25 +65,17 @@ Your final JSON must have this format:
     "unit": "metric tons CO2e",
     "year": <YYYY or null>
   }},
-  "source_location": "Short description or page numbers or 'Not found' if not available",
+  "source_location": "<location or 'Not found'>",
   "previous_years_data": {{
     "<YYYY>": {{
-      "scope_1": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY or null> }},
-      "scope_2": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY or null> }}
-    }},
-    ...
+      "scope_1": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY> }},
+      "scope_2": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY> }}
+    }}
   }} or null,
-  "sector": "<sector string or null>"
+  "sector": "<sector or null>"
 }}
 
-**Additional rules:**
-- If no data is found for current scope_1 or scope_2, return null for those values.
-- Units must always be "metric tons CO2e".
-- If the year is not clearly stated, return null for that year.
-- No extra text outside of this JSON is allowed.
-
-Analyze the following text for Scope 1, Scope 2, previous years data, and sector:
-
+Text to analyze:
 {sections}
 """.strip()
 
@@ -118,7 +86,7 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
                 system=system_instructions,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=6000
+                max_tokens=4096  # Fixed to stay within model limits
             )
 
             if response.content and response.content[0].text:
@@ -139,6 +107,7 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
             return None
 
     def _extract_relevant_sections(self, text: str, page_threshold: int = 20) -> str:
+        """Extract relevant sections containing emissions data."""
         # Find tables first
         table_matches = re.finditer(r'===.*?TABLE.*?===.*?(?====|\Z)', text, re.DOTALL)
         relevant_tables = []
@@ -160,8 +129,8 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
         if relevant_chunks:
             return '=== '.join(relevant_chunks)
 
-        # Fallback: return first 100k of text
-        return text[:100000]
+        # Fallback: return first portion of text
+        return text[:50000]
 
     def _parse_and_clean_json(self, content: str) -> Optional[Dict]:
         """Parse the JSON and ensure all allowed keys are present."""
@@ -173,7 +142,6 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
                 data_str = json_match.group(1)
                 data = self._parse_json_response(data_str)
 
-        # Allowed keys now include: scope_1, scope_2, source_location, previous_years_data, sector
         if data:
             allowed_keys = {"scope_1", "scope_2", "source_location", "previous_years_data", "sector"}
             cleaned_data = {k: v for k, v in data.items() if k in allowed_keys}
@@ -195,11 +163,12 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
             return None
 
     def _normalize_and_validate(self, data: Dict) -> Dict:
+        """Normalize and validate the extracted data."""
         # Normalize scope_1 and scope_2 for current year
         for scope in ["scope_1", "scope_2"]:
             data[scope] = self._normalize_scope_data(data.get(scope))
 
-        # previous_years_data normalization
+        # Previous years data normalization
         previous_data = data.get("previous_years_data")
         if previous_data and isinstance(previous_data, dict):
             normalized_previous = {}
@@ -219,12 +188,12 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
         else:
             data["previous_years_data"] = None
 
-        # sector normalization
+        # Sector normalization
         sector = data.get("sector")
         if not isinstance(sector, str) or not sector.strip():
             data["sector"] = None
 
-        # source_location normalization
+        # Source location normalization
         source_location = data.get("source_location")
         if not isinstance(source_location, str) or not source_location.strip():
             data["source_location"] = "Not found"
@@ -262,7 +231,8 @@ Analyze the following text for Scope 1, Scope 2, previous years data, and sector
             "year": scope_year
         }
 
-    def _safe_int(self, value):
+    def _safe_int(self, value) -> Optional[int]:
+        """Safely convert a value to integer."""
         try:
             return int(value)
         except (ValueError, TypeError):
