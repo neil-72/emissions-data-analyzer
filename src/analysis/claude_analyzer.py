@@ -1,5 +1,5 @@
 from anthropic import Anthropic
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 import re
 import logging
 import json
@@ -7,96 +7,89 @@ from ..config import CLAUDE_API_KEY
 
 class EmissionsAnalyzer:
     def __init__(self):
-        # Updated client initialization
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
         self.target_sections = [
-            "Greenhouse Gas Emissions",
-            "Climate Change",
-            "Environmental Data",
-            "Scope 1 and 2",
-            "GHG Emissions",
-            "Carbon Footprint",
-            "ESG Performance",
-            "Environmental Metrics"
+            "Greenhouse Gas Emissions", "Climate Change", "Environmental Data",
+            "Scope 1 and 2", "GHG Emissions", "Carbon Footprint",
+            "ESG Performance", "Environmental Metrics"
         ]
         self.table_keywords = [
-            "Emissions Data",
-            "GHG Data",
-            "Environmental Performance",
-            "Metrics and Targets",
-            "Climate Data",
-            "ESG Metrics"
+            "Emissions Data", "GHG Data", "Environmental Performance",
+            "Metrics and Targets", "Climate Data", "ESG Metrics"
         ]
 
     def extract_emissions_data(self, text: str) -> Optional[Dict]:
         """Extract emissions data using Claude."""
         logging.info("Starting emissions data extraction...")
-        
+
         sections = self._extract_relevant_sections(text)
-        if not sections:
+        if not sections.strip():
             logging.info("No relevant sections found, using full text...")
             sections = text
 
-        prompt = f"""You are analyzing a sustainability report to find Scope 1 and 2 emissions data.
-        Focus ONLY on extracting these specific data points:
-        1. Scope 1 (direct) emissions value and unit for the most recent year
-        2. Scope 2 (indirect) emissions value and unit for the most recent year
-        3. The reporting year for this data
-        
-        Important notes:
-        - Text will contain page markers like "=== START PAGE X ===" to help locate data
-        - Look for tables and data sections, particularly after these keywords: emissions, ghg, carbon, scope
-        - Data might be presented in different units (convert if needed to metric tons CO2e)
-        - Verify numbers are from the most recent year available
-        - Commonly found in: ESG data tables, environmental metrics, GRI/SASB indices
-        
-        Return ONLY this exact JSON structure with numeric values:
-        {{
-            "scope_1": {{
-                "value": <number>,
-                "unit": "metric tons CO2e",
-                "year": <YYYY>
-            }},
-            "scope_2": {{
-                "value": <number>,
-                "unit": "metric tons CO2e", 
-                "year": <YYYY>
-            }},
-            "source_location": "Brief description of where in report data was found (include page numbers if marked)"
-        }}
-        
-        Text to analyze:
-        {sections[:50000]}
-        """
+        # We strongly instruct Claude to return ONLY JSON:
+        prompt = f"""
+You are analyzing a corporate sustainability report to find greenhouse gas (GHG) emissions data, specifically Scope 1 and Scope 2. 
+
+Please follow these instructions carefully:
+- Return ONLY a JSON object and NOTHING else.
+- The JSON should have this format:
+
+{{
+  "scope_1": {{
+    "value": <number>,
+    "unit": "metric tons CO2e",
+    "year": <YYYY>
+  }},
+  "scope_2": {{
+    "value": <number>,
+    "unit": "metric tons CO2e",
+    "year": <YYYY>
+  }},
+  "source_location": "Short description of where data was found (page numbers if available)"
+}}
+
+Notes:
+- If multiple years are available, return data for the most recent year you find.
+- If units are not in metric tons CO2e, convert or reasonably interpret them as metric tons CO2e.
+- If scope data is not explicitly labeled as "Scope 1" or "Scope 2", infer from context.
+- Ignore any extraneous text and do not include commentary outside the JSON.
+- If no data is found, return a JSON object with null values in place of numbers.
+
+Text to analyze (may include page markers like '=== START PAGE X ==='):
+
+{sections[:50000]}
+"""
 
         try:
             logging.info("Sending request to Claude...")
-            # Updated method for creating messages
             response = self.client.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=4000,
                 temperature=0,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                messages=[{"role": "user", "content": prompt}]
             )
-            
+
             if response.content:
-                content = response.content[0].text
+                content = response.content[0].text.strip()
                 logging.info("Response received from Claude")
-                
-                # Try to extract JSON even if there's surrounding text
-                try:
-                    json_match = re.search(r'({[^{]*"scope_1".*"scope_2".*})', content, re.DOTALL)
+
+                # Try to directly parse the entire response as JSON, since we asked for ONLY JSON.
+                # If that fails, try regex extraction.
+                data = self._parse_json_response(content)
+                if data is None:
+                    # Try regex-based extraction as a fallback
+                    json_match = re.search(r'(\{.*"scope_1".*"scope_2".*?\})', content, re.DOTALL)
                     if json_match:
-                        content = json_match.group(1)
-                except:
-                    pass
-                    
-                data = self._validate_emissions_data(content)
+                        data_str = json_match.group(1)
+                        data = self._parse_json_response(data_str)
+
+                # Final validation and normalization step
+                if data:
+                    data = self._normalize_and_validate(data)
+                else:
+                    logging.warning("Could not parse emissions data from Claude's response.")
+
                 return data
             else:
                 logging.warning("No content in Claude response")
@@ -108,103 +101,105 @@ class EmissionsAnalyzer:
 
     def _extract_relevant_sections(self, text: str) -> str:
         """Extract sections likely to contain emissions data."""
-        sections = []
         lines = text.split('\n')
+        sections = []
         current_section = []
         in_relevant_section = False
         page_marker = None
-        
+
+        # Heuristic: start a "section" when we see a target keyword, table keyword, or scope line
         for line in lines:
-            # Track page markers
             if "=== START PAGE" in line:
                 page_marker = line
                 continue
             if "=== END PAGE" in line:
+                # End current section if it existed
                 if current_section and page_marker:
                     sections.append(f"{page_marker}\n{''.join(current_section)}\n{line}")
                 current_section = []
                 page_marker = None
+                in_relevant_section = False
                 continue
-                
-            # Check for relevant content
-            is_target = any(keyword.lower() in line.lower() for keyword in self.target_sections)
-            is_table = any(keyword.lower() in line.lower() for keyword in self.table_keywords)
-            has_scope = re.search(r'(?i)scope\s*[12]', line)
+
+            is_target = any(kw.lower() in line.lower() for kw in self.target_sections)
+            is_table = any(kw.lower() in line.lower() for kw in self.table_keywords)
+            has_scope_line = re.search(r'(?i)scope\s*[12]', line)
             has_numbers = re.search(r'\d{1,3}(?:,\d{3})*(?:\.\d+)?', line)
-            
-            if is_target or is_table or (has_scope and has_numbers):
-                in_relevant_section = True
+
+            if is_target or is_table or (has_scope_line and has_numbers):
+                # Start a new relevant section
                 if current_section:
                     sections.append(''.join(current_section))
-                current_section = [line]
+                current_section = [line + "\n"]
+                in_relevant_section = True
             elif in_relevant_section:
-                current_section.append(line)
-                # Check if section should end
-                if line.strip() and line.strip()[0].isupper() and len(line.split()) <= 5:
-                    in_relevant_section = False
-                    if current_section:
-                        sections.append(''.join(current_section))
-                    current_section = []
-        
+                # Continue current section until a probable new section begins
+                current_section.append(line + "\n")
+
+        # Catch trailing section
         if current_section:
             sections.append(''.join(current_section))
-        
+
         return '\n\n'.join(sections)
 
-    def _validate_emissions_data(self, data: str) -> Optional[Dict]:
-        """Validate extracted emissions data meets expected ranges and formats."""
-        typical_ranges = {
-            'scope_1': (100, 10000000),  # Typical corporate ranges
-            'scope_2': (1000, 20000000)  # Usually higher than scope 1
-        }
-        
+    def _parse_json_response(self, content: str) -> Optional[Dict]:
+        """Try to parse Claude's response as JSON."""
         try:
-            if isinstance(data, str):
-                data = json.loads(data)
-            
-            # Basic structure check
-            required_fields = {'scope_1', 'scope_2', 'source_location'}
-            if not all(field in data for field in required_fields):
-                logging.warning("Missing required fields in data")
-                return None
-            
-            # Validate each scope
-            for scope in ['scope_1', 'scope_2']:
-                scope_data = data[scope]
-                
-                # Check all required fields exist
-                if not all(field in scope_data for field in ['value', 'unit', 'year']):
-                    logging.warning(f"Missing required fields in {scope}")
-                    return None
-                
-                # Validate value
-                value = scope_data['value']
-                if not isinstance(value, (int, float)):
-                    logging.warning(f"{scope} value {value} is not numeric")
-                    return None
-                    
-                # Check range
-                min_val, max_val = typical_ranges[scope]
-                if not min_val <= value <= max_val:
-                    logging.warning(f"{scope} value {value} outside typical range")
-                    return None
-                
-                # Validate unit
-                if not isinstance(scope_data['unit'], str) or 'co2' not in scope_data['unit'].lower():
-                    logging.warning(f"Invalid unit format for {scope}")
-                    return None
-                
-                # Validate year
-                year = scope_data['year']
-                if not isinstance(year, int) or not (2020 <= year <= 2024):
-                    logging.warning(f"Invalid year for {scope}: {year}")
-                    return None
-            
-            return data
-            
+            return json.loads(content)
         except json.JSONDecodeError:
-            logging.error("Failed to parse JSON data")
+            # If the response is not pure JSON, log and return None
+            logging.error("Failed to parse JSON data from Claude response")
             return None
-        except Exception as e:
-            logging.error(f"Error validating data: {str(e)}")
-            return None
+
+    def _normalize_and_validate(self, data: Dict) -> Optional[Dict]:
+        """Normalize units and values, and do not strictly reject on out-of-range values.
+
+        We try to unify units into 'metric tons CO2e' if different units are given.
+        We'll log warnings if values seem off, but still return them.
+        """
+
+        # Required fields check
+        required_scopes = ["scope_1", "scope_2"]
+        if not all(scope in data for scope in required_scopes):
+            logging.warning("Missing scope_1 or scope_2 in returned data. Returning anyway.")
+            # If data is incomplete, still return what we have.
+        
+        for scope in required_scopes:
+            if scope in data:
+                scope_data = data[scope]
+
+                # Normalize value
+                value = scope_data.get("value")
+                if isinstance(value, str):
+                    # Try to convert string to float
+                    value = value.replace(',', '').strip()
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        logging.warning(f"Non-numeric value for {scope}: {scope_data['value']}. Setting to None.")
+                        value = None
+                scope_data["value"] = value
+
+                # Normalize units to "metric tons CO2e"
+                unit = scope_data.get("unit", "").lower()
+                # If we find any mention of 'ton', 'co2', etc., just unify:
+                if "co2" in unit:
+                    scope_data["unit"] = "metric tons CO2e"
+                else:
+                    # If we can't confirm units, still assign a standard:
+                    scope_data["unit"] = "metric tons CO2e"
+
+                # Validate year is a four-digit year if present
+                year = scope_data.get("year")
+                if year and isinstance(year, int) and (2000 <= year <= 2100):
+                    pass
+                else:
+                    # If no valid year is found, just set None or current year
+                    if year is None or not isinstance(year, int):
+                        logging.warning(f"No valid year found for {scope}.")
+                        scope_data["year"] = None
+                    elif year < 2000 or year > 2100:
+                        logging.warning(f"Year {year} seems out of normal range. Keeping it as is.")
+        
+        # Return the data as is, even if some fields are None, so we don't lose partial data.
+        return data
