@@ -22,7 +22,6 @@ if not CLAUDE_API_KEY or not BRAVE_API_KEY:
 # Search Configuration
 SEARCH_YEARS = [2024, 2023]  # Years to search for reports
 MAX_RESULTS_PER_SEARCH = 5
-VALID_DOMAINS = [".com", ".org", ".net", ".gov"]
 
 # Document Processing
 MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB limit
