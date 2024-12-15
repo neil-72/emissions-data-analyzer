@@ -5,8 +5,23 @@ import io
 from bs4 import BeautifulSoup
 import time
 from urllib.parse import urljoin
+import logging
+import re
 
 class DocumentHandler:
+    EMISSIONS_KEYWORDS = [
+        'scope 1', 'scope 2', 'ghg emissions', 'co2', 
+        'greenhouse gas', 'carbon emissions', 'carbon footprint',
+        'direct emissions', 'indirect emissions', 
+        'metric tons co2e', 'tonnes co2e', 'emissions summary'
+    ]
+    
+    TABLE_PATTERNS = [
+        r'[\|\t].+[\|\t].+\n',  # Table with | or tab separators
+        r'\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*(?:tons?|tonnes|mt|co2)',  # Numbers with units
+        r'(?i)scope\s*[12].*?\d',  # Scope followed by numbers
+    ]
+
     @staticmethod
     def extract_text_from_pdf(url: str, retries: int = 3) -> Optional[str]:
         """Extract text from a PDF URL with retries and fallbacks."""
@@ -30,13 +45,24 @@ class DocumentHandler:
                 pdf_file = io.BytesIO(pdf_content)
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
                 
-                # Extract text from all pages
+                # Extract text with enhanced table detection
                 text_content = []
-                for page in pdf_reader.pages:
+                for page_num, page in enumerate(pdf_reader.pages):
                     try:
-                        text_content.append(page.extract_text())
+                        text = page.extract_text()
+                        
+                        # Look for potential tables or emissions data
+                        if DocumentHandler._has_emissions_data(text):
+                            # Process and preserve table structure
+                            processed_text = DocumentHandler._process_table_text(text)
+                            # Add page markers to help locate data later
+                            marked_text = f"=== START PAGE {page_num + 1} ===\n{processed_text}\n=== END PAGE {page_num + 1} ==="
+                            text_content.append(marked_text)
+                        else:
+                            text_content.append(text)
+                            
                     except Exception as e:
-                        print(f"Warning: Could not extract text from page: {str(e)}")
+                        logging.warning(f"Could not extract text from page {page_num + 1}: {str(e)}")
                         continue
                 
                 return "\n".join(text_content)
@@ -52,12 +78,62 @@ class DocumentHandler:
                             continue
                 
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed: {str(e)}")
+                logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
                 if attempt < retries - 1:
                     time.sleep(2 ** attempt)  # Exponential backoff
                 continue
         
         return None
+
+    @staticmethod
+    def _has_emissions_data(text: str) -> bool:
+        """Check if text contains potential emissions data."""
+        text_lower = text.lower()
+        
+        # Check for emissions keywords
+        keyword_matches = sum(1 for kw in DocumentHandler.EMISSIONS_KEYWORDS 
+                            if kw in text_lower)
+                            
+        # Check for table patterns
+        has_table = any(re.search(pattern, text) 
+                       for pattern in DocumentHandler.TABLE_PATTERNS)
+                       
+        # Check for numbers in typical emissions ranges (100-10M tonnes)
+        number_matches = re.findall(r'\b\d{3,7}(?:\.\d+)?\b', text)
+        valid_numbers = [float(n) for n in number_matches if 100 <= float(n) <= 10_000_000]
+        
+        return (keyword_matches >= 2) or (keyword_matches >= 1 and has_table) or (len(valid_numbers) >= 2)
+
+    @staticmethod
+    def _process_table_text(text: str) -> str:
+        """Process and preserve structure of text containing tables."""
+        lines = text.split('\n')
+        processed_lines = []
+        
+        for line in lines:
+            line = line.rstrip()
+            if not line:
+                continue
+                
+            # Preserve lines with scope data
+            if re.search(r'(?i)scope\s*[12]', line):
+                processed_lines.append(line)
+                continue
+                
+            # Preserve lines with emissions numbers
+            if re.search(r'\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*(?:tons?|tonnes|mt|co2)', line):
+                processed_lines.append(line)
+                continue
+                
+            # Preserve table headers
+            if any(keyword in line.lower() for keyword in ['emissions', 'carbon', 'year', 'total']):
+                processed_lines.append(line)
+                continue
+                
+            # Normalize other lines
+            processed_lines.append(' '.join(line.split()))
+            
+        return '\n'.join(processed_lines)
 
     @staticmethod
     def _get_alternative_urls(url: str) -> List[str]:
@@ -109,7 +185,7 @@ class DocumentHandler:
             return ' '.join(chunk for chunk in chunks if chunk)
             
         except Exception as e:
-            print(f"Error extracting webpage text: {str(e)}")
+            logging.error(f"Error extracting webpage text: {str(e)}")
             return None
 
     @staticmethod
