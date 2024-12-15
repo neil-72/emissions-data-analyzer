@@ -1,11 +1,10 @@
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import logging
 from ..config import (
     BRAVE_API_KEY, 
     SEARCH_YEARS, 
-    MAX_RESULTS_PER_SEARCH,
-    VALID_DOMAINS
+    MAX_RESULTS_PER_SEARCH
 )
 
 class BraveSearchClient:
@@ -46,16 +45,18 @@ class BraveSearchClient:
                     if results.get("web", {}).get("results"):
                         for result in results["web"]["results"]:
                             url = result["url"].lower()
-                            
-                            # Validate URL
-                            if self._is_valid_report_url(url, company_name):
-                                logging.info(f"Found potential report: {result['url']}")
+                            title = result.get("title", "").lower()
+
+                            # Validate title contains the year and company name
+                            if str(year) in title and company_name.lower() in title:
+                                logging.info(f"Found valid report: {result['url']}")
                                 return {
                                     "url": result["url"],
                                     "title": result["title"],
-                                    "year": year,
-                                    "description": result.get("description", "")
+                                    "year": year
                                 }
+
+                            logging.info(f"Skipping result: Year {year} not in title '{result.get('title', '')}'")
 
                 except requests.RequestException as e:
                     logging.error(f"Network error in search '{search_term}': {str(e)}")
@@ -66,15 +67,3 @@ class BraveSearchClient:
 
         logging.warning("No official sustainability report found")
         return None
-
-    def _is_valid_report_url(self, url: str, company_name: str) -> bool:
-        """Validate if URL is likely an official company report."""
-        url_lower = url.lower()
-        company_lower = company_name.lower()
-        
-        return all([
-            url_lower.endswith('.pdf'),
-            company_lower in url_lower,
-            any(domain in url_lower for domain in VALID_DOMAINS),
-            not any(term in url_lower for term in ['linkedin', 'facebook', 'twitter'])
-        ])
