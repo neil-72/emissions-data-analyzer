@@ -12,8 +12,8 @@ class EmissionsAnalyzer:
         print(f"Text length: {len(text)} characters")
         
         prompt = f"""
-        You are analyzing a sustainability report to extract carbon emissions data.
-        Focus only on finding Scope 1 and Scope 2 emissions numbers.
+        You are analyzing a sustainability report to extract Scope 1 and Scope 2 emissions data.
+        Look ONLY for these specific emissions numbers in the provided text.
         If you find multiple years of data, use the most recent year.
         
         Text to analyze:
@@ -37,20 +37,14 @@ class EmissionsAnalyzer:
 
         try:
             print("Sending request to Claude...")
-            response = self.client.messages.create(
+            response = self.client.complete(
+                prompt=prompt,
                 model="claude-3-sonnet-20240229",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                max_tokens=1000,
             )
             
-            if hasattr(response, 'content') and len(response.content) > 0:
-                content = response.content[0].text
-                print(f"Response received: {content[:200]}...")
-                return content
-            else:
-                print("No content in response")
-                return None
+            print(f"Response received: {response.completion[:200]}...")
+            return response.completion
 
         except Exception as e:
             print(f"Detailed error in Claude analysis: {str(e)}")
