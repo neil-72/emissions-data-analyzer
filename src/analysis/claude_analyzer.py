@@ -27,7 +27,13 @@ class EmissionsAnalyzer:
             logging.info("No relevant sections found, using full text...")
             sections = text
 
-        # We strongly instruct Claude to return ONLY JSON:
+        # Strong instructions in system message to ensure JSON-only output:
+        system_instructions = (
+            "You are an assistant that ONLY returns valid JSON with no extra text. "
+            "If you cannot find any relevant data, return the specified JSON with null values. "
+            "No explanations, no additional formatting, no text outside the JSON."
+        )
+
         prompt = f"""
 You are analyzing a corporate sustainability report to find greenhouse gas (GHG) emissions data, specifically Scope 1 and Scope 2. 
 
@@ -37,45 +43,45 @@ Please follow these instructions carefully:
 
 {{
   "scope_1": {{
-    "value": <number>,
+    "value": <number or null>,
     "unit": "metric tons CO2e",
-    "year": <YYYY>
+    "year": <YYYY or null>
   }},
   "scope_2": {{
-    "value": <number>,
+    "value": <number or null>,
     "unit": "metric tons CO2e",
-    "year": <YYYY>
+    "year": <YYYY or null>
   }},
   "source_location": "Short description of where data was found (page numbers if available)"
 }}
 
 Notes:
 - If multiple years are available, return data for the most recent year you find.
-- If units are not in metric tons CO2e, convert or reasonably interpret them as metric tons CO2e.
+- If units are not in metric tons CO2e, convert or interpret them as metric tons CO2e.
 - If scope data is not explicitly labeled as "Scope 1" or "Scope 2", infer from context.
-- Ignore any extraneous text and do not include commentary outside the JSON.
-- If no data is found, return a JSON object with null values in place of numbers.
+- Do not include commentary or explanations outside the JSON.
+- If no data is found, return the JSON with null values for all numbers and an empty string for source_location.
 
 Text to analyze (may include page markers like '=== START PAGE X ==='):
 
 {sections[:50000]}
-"""
+""".strip()
 
         try:
             logging.info("Sending request to Claude...")
-            response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=4000,
+            response = self.client.completions.create(
+                model="claude-2",  # or your chosen Claude model
+                max_tokens_to_sample=4000,
                 temperature=0,
-                messages=[{"role": "user", "content": prompt}]
+                stop_sequences=["\n\n"],  # Ensures no text after JSON
+                prompt=f"{Anthropic.SYSTEM_PROMPT} {system_instructions}\n\n{Anthropic.HUMAN_PROMPT} {prompt}\n\n{Anthropic.AI_PROMPT}",
             )
 
-            if response.content:
-                content = response.content[0].text.strip()
+            if "completion" in response and response["completion"].strip():
+                content = response["completion"].strip()
                 logging.info("Response received from Claude")
 
-                # Try to directly parse the entire response as JSON, since we asked for ONLY JSON.
-                # If that fails, try regex extraction.
+                # Try to directly parse the entire response as JSON.
                 data = self._parse_json_response(content)
                 if data is None:
                     # Try regex-based extraction as a fallback
@@ -84,7 +90,7 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
                         data_str = json_match.group(1)
                         data = self._parse_json_response(data_str)
 
-                # Final validation and normalization step
+                # Final validation and normalization
                 if data:
                     data = self._normalize_and_validate(data)
                 else:
@@ -147,23 +153,15 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            # If the response is not pure JSON, log and return None
             logging.error("Failed to parse JSON data from Claude response")
             return None
 
     def _normalize_and_validate(self, data: Dict) -> Optional[Dict]:
-        """Normalize units and values, and do not strictly reject on out-of-range values.
-
-        We try to unify units into 'metric tons CO2e' if different units are given.
-        We'll log warnings if values seem off, but still return them.
-        """
-
-        # Required fields check
+        """Normalize units and values without rejecting partial data."""
         required_scopes = ["scope_1", "scope_2"]
         if not all(scope in data for scope in required_scopes):
             logging.warning("Missing scope_1 or scope_2 in returned data. Returning anyway.")
-            # If data is incomplete, still return what we have.
-        
+
         for scope in required_scopes:
             if scope in data:
                 scope_data = data[scope]
@@ -171,7 +169,6 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
                 # Normalize value
                 value = scope_data.get("value")
                 if isinstance(value, str):
-                    # Try to convert string to float
                     value = value.replace(',', '').strip()
                     try:
                         value = float(value)
@@ -180,26 +177,22 @@ Text to analyze (may include page markers like '=== START PAGE X ==='):
                         value = None
                 scope_data["value"] = value
 
-                # Normalize units to "metric tons CO2e"
+                # Normalize units
                 unit = scope_data.get("unit", "").lower()
-                # If we find any mention of 'ton', 'co2', etc., just unify:
-                if "co2" in unit:
+                if "co2" in unit or "ton" in unit:
                     scope_data["unit"] = "metric tons CO2e"
                 else:
-                    # If we can't confirm units, still assign a standard:
                     scope_data["unit"] = "metric tons CO2e"
 
-                # Validate year is a four-digit year if present
+                # Validate year
                 year = scope_data.get("year")
-                if year and isinstance(year, int) and (2000 <= year <= 2100):
-                    pass
+                if year and isinstance(year, int):
+                    if not (2000 <= year <= 2100):
+                        logging.warning(f"Year {year} out of normal range, keeping as is.")
                 else:
-                    # If no valid year is found, just set None or current year
+                    # Set year to None if not valid
                     if year is None or not isinstance(year, int):
-                        logging.warning(f"No valid year found for {scope}.")
+                        logging.warning(f"No valid year found for {scope}, setting to None.")
                         scope_data["year"] = None
-                    elif year < 2000 or year > 2100:
-                        logging.warning(f"Year {year} seems out of normal range. Keeping it as is.")
-        
-        # Return the data as is, even if some fields are None, so we don't lose partial data.
+
         return data
