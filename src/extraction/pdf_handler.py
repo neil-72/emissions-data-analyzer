@@ -29,7 +29,7 @@ class DocumentHandler:
         
         # Numerical patterns with units
         r'\d+(?:,\d{3})*(?:\.\d+)?\s*(?:mt|t)(?:co2|co2e|carbon)',
-        r'\d+(?:,\d{3})*(?:\.\d+)?\s*(?:metric\s*tons?)(?:co2|co2e)'
+        r'\d+(?:,\d{3})*(?:\.\d+)?\s*(?:metric\s*tons?)\s*(?:co2|co2e)'
     ]
 
     # Enhanced unit detection patterns
@@ -177,9 +177,23 @@ class DocumentHandler:
             
             # Check for direct keyword matches
             if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS):
-                # If we find a keyword and a number, likely emissions data
-                if re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', row_text):
-                    return True
+                return True
+            
+            # Check for numerical values with emission units
+            numbers_with_units = re.findall(
+                r'\d+(?:,\d{3})*(?:\.\d+)?\s*(?:mt|tons?|tonnes?|kg)(?:\s*co2e?)?',
+                row_text
+            )
+            if numbers_with_units:
+                return True
+            
+            # Check for scope references with numbers
+            scope_with_values = re.findall(
+                r'(?i)scope\s*[123].*?\d+(?:,\d{3})*(?:\.\d+)?',
+                row_text
+            )
+            if scope_with_values:
+                return True
 
         return False
 
