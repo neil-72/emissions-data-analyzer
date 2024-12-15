@@ -311,11 +311,21 @@ class DocumentHandler:
         except Exception as e:
             logging.error(f"Error extracting webpage content: {str(e)}")
             return None
-
+            
     @staticmethod
     def get_document_content(url: str) -> Optional[str]:
         """Get content from either a PDF or a webpage."""
         if url.lower().endswith('.pdf'):
-            return DocumentHandler.extract_text_from_pdf(url)
+            extracted = DocumentHandler.extract_text_from_pdf(url)
         else:
-            return DocumentHandler.extract_text_from_webpage(url)
+            extracted = DocumentHandler.extract_text_from_webpage(url)
+
+        # >>> ADD THESE LINES <<<
+        # For testing: write the extracted raw text to a file so you can inspect it
+        if extracted:
+            with open("raw_extracted_data.txt", "w", encoding="utf-8") as f:
+                f.write(extracted)
+        # >>> END OF ADDED LINES <<<
+
+        return extracted
+
