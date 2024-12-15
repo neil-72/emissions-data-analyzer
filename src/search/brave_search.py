@@ -17,7 +17,7 @@ class BraveSearchClient:
         }
 
     def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
-        """Search specifically for official company sustainability reports."""
+        """Search for a sustainability report PDF, preferring more recent years."""
         if not company_name.strip():
             logging.error("Empty company name provided")
             return None
@@ -27,11 +27,10 @@ class BraveSearchClient:
 
             search_terms = [
                 f"{company_name} sustainability report {year} filetype:pdf",
-                f"{company_name} corporate responsibility report {year} filetype:pdf",
-                f"{company_name} ESG report {year} filetype:pdf",
-                f"{company_name} environmental report {year} filetype:pdf"
+                f"{company_name} corporate responsibility report {year} filetype:pdf"
             ]
 
+            found_for_this_year = False
             for search_term in search_terms:
                 try:
                     response = requests.get(
@@ -46,15 +45,9 @@ class BraveSearchClient:
                         for result in results["web"]["results"]:
                             raw_title = result.get("title", "")
                             url = result["url"]
-
-                            # Normalize the title
                             title = raw_title.strip().lower()
-                            logging.debug(f"Raw title: '{raw_title}' | Normalized title: '{title}'")
 
-                            # Check presence of year and optionally company name
                             year_present = str(year) in title
-                            company_present = company_name.lower() in title
-
                             if year_present:
                                 logging.info(f"Found valid report: {url}")
                                 return {
@@ -62,21 +55,15 @@ class BraveSearchClient:
                                     "title": raw_title,
                                     "year": year
                                 }
-
-                            # Log missing elements for debugging
-                            missing_elements = []
-                            if not year_present:
-                                missing_elements.append("year")
-                            if not company_present:
-                                missing_elements.append("company name")
-                            logging.info(f"Skipping result: Missing {', '.join(missing_elements)} in title '{raw_title}'")
-
+                            else:
+                                logging.info(f"Skipping result: Missing year {year} in title '{raw_title}'")
                 except requests.RequestException as e:
                     logging.error(f"Network error in search '{search_term}': {str(e)}")
-                    continue
                 except Exception as e:
                     logging.error(f"Unexpected error in search '{search_term}': {str(e)}")
-                    continue
+
+            if not found_for_this_year:
+                logging.info(f"No suitable {year} report found for {company_name}, checking next available year...")
 
         logging.warning("No official sustainability report found")
         return None
