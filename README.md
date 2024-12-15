@@ -1,16 +1,17 @@
 # Emissions Data Analyzer
 
-A tool to extract Scope 1 and Scope 2 carbon emissions data from official company sustainability reports.
+A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
 
-## Features
-- Focused search for official company PDF reports only
-- Supports 2024 and 2023 sustainability reports
-- PDF text extraction and analysis
-- Structured data output
+## Key Features
+- Smart section targeting to find emissions data in complex reports
+- Robust validation of extracted data with typical range checking
+- Support for multiple report formats (PDF, web-based)
+- Detailed logging for debugging and verification
+- Fallback strategies when primary data extraction fails
 
 ## Setup
 
-1. **Clone the repository**
+1. Clone the repository:
 ```bash
 git clone https://github.com/neil-72/emissions-data-analyzer.git
 cd emissions-data-analyzer
