@@ -31,30 +31,52 @@ class EmissionsAnalyzer:
         ]
 
     def extract_emissions_data(self, text: str) -> Optional[Dict]:
-        """Extract emissions data using Claude with strict formatting rules."""
+        """Extract emissions data (including previous years and sector) using Claude."""
         logging.info("Starting emissions data extraction...")
 
         sections = self._extract_relevant_sections(text)
         if not sections.strip():
             logging.info("No prioritized sections found, using entire text as fallback.")
-            sections = text[:100000]  # Limit to 100k chars if extremely large
+            sections = text[:100000]
 
-        # System instructions to ensure only JSON is returned
+        # System instructions: return ONLY the JSON, no extra text
         system_instructions = (
             "You are an assistant that returns ONLY valid JSON with NO extra text. "
             "If you cannot find any Scope 1 or Scope 2 GHG emissions data, you must return the JSON with null values. "
+            "If you cannot find previous years data or the sector, return them as null. "
             "No explanations, no formatting outside of the JSON."
         )
 
-        # User prompt to Claude
+        # Updated user prompt to include previous years and sector
         prompt = f"""
-You are analyzing a corporate sustainability report to find ONLY Scope 1 and Scope 2 greenhouse gas (GHG) emissions data.
+You are analyzing a corporate sustainability report. Your goal is to find:
+- Scope 1 and Scope 2 greenhouse gas (GHG) emissions data for the reported year.
+- Any available previous years’ Scope 1 and Scope 2 data mentioned in the text.
+- The company’s sector, if identifiable from the text or the company name.
 
 **Instructions:**
 - Return ONLY a JSON object and NOTHING else.
-- The ONLY keys allowed are: "scope_1", "scope_2", and "source_location".
-- If no data is found, return null values for both scopes and "source_location": "Not found".
-- The JSON must have this exact format:
+- The ONLY keys allowed are: "scope_1", "scope_2", "source_location", "previous_years_data", "sector".
+- "previous_years_data" should be an object mapping years (YYYY) to scope_1 and scope_2 data in the same format as the current year:
+    {{
+      "YYYY": {{
+        "scope_1": {{
+          "value": <number or null>,
+          "unit": "metric tons CO2e",
+          "year": <YYYY or null>
+        }},
+        "scope_2": {{
+          "value": <number or null>,
+          "unit": "metric tons CO2e",
+          "year": <YYYY or null>
+        }}
+      }},
+      ...
+    }}
+  If no previous years’ data is found, "previous_years_data" should be null.
+- The "sector" should be a string if found, otherwise null.
+
+Your final JSON must have this format:
 
 {{
   "scope_1": {{
@@ -67,17 +89,24 @@ You are analyzing a corporate sustainability report to find ONLY Scope 1 and Sco
     "unit": "metric tons CO2e",
     "year": <YYYY or null>
   }},
-  "source_location": "Short description or page numbers or 'Not found' if not available"
+  "source_location": "Short description or page numbers or 'Not found' if not available",
+  "previous_years_data": {{
+    "<YYYY>": {{
+      "scope_1": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY or null> }},
+      "scope_2": {{ "value": <number or null>, "unit": "metric tons CO2e", "year": <YYYY or null> }}
+    }},
+    ...
+  }} or null,
+  "sector": "<sector string or null>"
 }}
 
 **Additional rules:**
-- Do not return any fields other than scope_1, scope_2, and source_location.
-- If multiple years are available, choose the most recent.
+- If no data is found for current scope_1 or scope_2, return null for those values.
 - Units must always be "metric tons CO2e".
-- If the year is not clearly stated, return null for the year.
-- If values are not clearly stated for a scope, return null for that scope.
+- If the year is not clearly stated, return null for that year.
+- No extra text outside of this JSON is allowed.
 
-Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
+Analyze the following text for Scope 1, Scope 2, previous years data, and sector:
 
 {sections}
 """.strip()
@@ -89,7 +118,7 @@ Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
                 system=system_instructions,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=4000
+                max_tokens=6000
             )
 
             if response.content and response.content[0].text:
@@ -110,11 +139,6 @@ Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
             return None
 
     def _extract_relevant_sections(self, text: str, page_threshold: int = 20) -> str:
-        """
-        Attempts to extract relevant sections. We prioritize:
-        1. Emissions-related tables
-        2. Chunks mentioning target keywords and scope numbers
-        """
         # Find tables first
         table_matches = re.finditer(r'===.*?TABLE.*?===.*?(?====|\Z)', text, re.DOTALL)
         relevant_tables = []
@@ -125,14 +149,14 @@ Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
         if relevant_tables:
             return '\n\n'.join(relevant_tables)
 
-        # If no tables found, look for text chunks with relevant keywords
+        # If no tables found, look for relevant chunks
         chunks = text.split('===')
         relevant_chunks = []
         for chunk in chunks:
             if any(kw.lower() in chunk.lower() for kw in self.target_sections):
-                # Check for mention of scope 1 or scope 2 with numbers
                 if re.search(r'(?i)scope\s*[12].*?\d', chunk):
                     relevant_chunks.append(chunk)
+
         if relevant_chunks:
             return '=== '.join(relevant_chunks)
 
@@ -140,24 +164,25 @@ Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
         return text[:100000]
 
     def _parse_and_clean_json(self, content: str) -> Optional[Dict]:
-        """Parse the JSON and remove any extraneous keys."""
-        # Attempt direct JSON parse
+        """Parse the JSON and ensure all allowed keys are present."""
         data = self._parse_json_response(content)
         if data is None:
-            # Attempt regex extraction if Claude included extra text
-            json_match = re.search(r'(\{.*"scope_1".*"scope_2".*?\})', content, re.DOTALL)
+            # Attempt regex extraction if extra text appeared
+            json_match = re.search(r'(\{.*"scope_1".*"scope_2".*?"sector".*?\})', content, re.DOTALL)
             if json_match:
                 data_str = json_match.group(1)
                 data = self._parse_json_response(data_str)
 
-        # Clean to only allowed keys
+        # Allowed keys now include: scope_1, scope_2, source_location, previous_years_data, sector
         if data:
-            allowed_keys = {"scope_1", "scope_2", "source_location"}
+            allowed_keys = {"scope_1", "scope_2", "source_location", "previous_years_data", "sector"}
             cleaned_data = {k: v for k, v in data.items() if k in allowed_keys}
-            # Ensure all required keys exist
-            for required_key in ["scope_1", "scope_2", "source_location"]:
+
+            # Ensure all required keys
+            for required_key in ["scope_1", "scope_2", "source_location", "previous_years_data", "sector"]:
                 if required_key not in cleaned_data:
                     cleaned_data[required_key] = None
+
             return cleaned_data
         return None
 
@@ -170,62 +195,75 @@ Analyze the following text for Scope 1 and Scope 2 GHG emissions data:
             return None
 
     def _normalize_and_validate(self, data: Dict) -> Dict:
-        """
-        Ensure data matches the required schema exactly:
-        {
-          "scope_1": {
-            "value": <float or null>,
-            "unit": "metric tons CO2e",
-            "year": <int or null>
-          },
-          "scope_2": {
-            "value": <float or null>,
-            "unit": "metric tons CO2e",
-            "year": <int or null>
-          },
-          "source_location": <str or "Not found">
-        }
-        """
+        # Normalize scope_1 and scope_2 for current year
         for scope in ["scope_1", "scope_2"]:
-            scope_data = data.get(scope)
-            if not isinstance(scope_data, dict):
-                # If no valid data, set default null values
-                data[scope] = {
-                    "value": None,
-                    "unit": "metric tons CO2e",
-                    "year": None
+            data[scope] = self._normalize_scope_data(data.get(scope))
+
+        # previous_years_data normalization
+        previous_data = data.get("previous_years_data")
+        if previous_data and isinstance(previous_data, dict):
+            normalized_previous = {}
+            for year_str, year_data in previous_data.items():
+                year = self._safe_int(year_str)
+                if not year or year < 2000 or year > 2100:
+                    year = None
+
+                norm_scope_1 = self._normalize_scope_data(year_data.get("scope_1"), year)
+                norm_scope_2 = self._normalize_scope_data(year_data.get("scope_2"), year)
+
+                normalized_previous[str(year) if year else "unknown_year"] = {
+                    "scope_1": norm_scope_1,
+                    "scope_2": norm_scope_2
                 }
-                continue
+            data["previous_years_data"] = normalized_previous if normalized_previous else None
+        else:
+            data["previous_years_data"] = None
 
-            # Normalize value
-            val = scope_data.get("value")
-            try:
-                val = float(str(val).replace(',', '')) if val is not None else None
-            except (ValueError, TypeError):
-                val = None
+        # sector normalization
+        sector = data.get("sector")
+        if not isinstance(sector, str) or not sector.strip():
+            data["sector"] = None
 
-            # Normalize unit
-            unit = "metric tons CO2e"
-
-            # Normalize year
-            year = scope_data.get("year")
-            try:
-                year_int = int(year)
-                if year_int < 2000 or year_int > 2100:
-                    year_int = None
-            except (ValueError, TypeError):
-                year_int = None
-
-            data[scope] = {
-                "value": val,
-                "unit": unit,
-                "year": year_int
-            }
-
-        # Ensure source_location is a string or default "Not found"
+        # source_location normalization
         source_location = data.get("source_location")
         if not isinstance(source_location, str) or not source_location.strip():
-            source_location = "Not found"
-        data["source_location"] = source_location
+            data["source_location"] = "Not found"
 
         return data
+
+    def _normalize_scope_data(self, scope_data: Optional[Dict], year: Optional[int] = None) -> Dict:
+        """Normalize a single scope (scope_1 or scope_2) data dictionary."""
+        if not isinstance(scope_data, dict):
+            return {
+                "value": None,
+                "unit": "metric tons CO2e",
+                "year": year if year else None
+            }
+
+        val = scope_data.get("value")
+        try:
+            val = float(str(val).replace(',', '')) if val is not None else None
+        except (ValueError, TypeError):
+            val = None
+
+        unit = "metric tons CO2e"
+
+        scope_year = scope_data.get("year")
+        scope_year = self._safe_int(scope_year)
+        if scope_year is not None and (scope_year < 2000 or scope_year > 2100):
+            scope_year = None
+
+        if year and not scope_year:
+            scope_year = year
+
+        return {
+            "value": val,
+            "unit": unit,
+            "year": scope_year
+        }
+
+    def _safe_int(self, value):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
