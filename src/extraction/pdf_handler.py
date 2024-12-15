@@ -9,15 +9,28 @@ class DocumentHandler:
     def extract_text_from_pdf(url: str) -> Optional[str]:
         """Extract text from a PDF URL."""
         try:
-            response = requests.get(url)
+            # Use stream=True for large files
+            response = requests.get(url, stream=True)
             response.raise_for_status()
             
-            pdf_file = io.BytesIO(response.content)
+            # Download the PDF in chunks
+            pdf_content = bytearray()
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    pdf_content.extend(chunk)
+            
+            # Read PDF content
+            pdf_file = io.BytesIO(pdf_content)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             
+            # Extract text from all pages
             text_content = []
             for page in pdf_reader.pages:
-                text_content.append(page.extract_text())
+                try:
+                    text_content.append(page.extract_text())
+                except Exception as e:
+                    print(f"Warning: Could not extract text from page: {str(e)}")
+                    continue
             
             return "\n".join(text_content)
             
@@ -29,7 +42,7 @@ class DocumentHandler:
     def extract_text_from_webpage(url: str) -> Optional[str]:
         """Extract text from a webpage."""
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=30)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
