@@ -35,11 +35,11 @@ class TableDetector:
         # Look for common table indicators
         patterns = [
             # Multiple lines with numbers and consistent spacing
-            r'(?:\s*[\w\s\(\)]+\s+\d[\d\.,]+\s*\n){3,}',
+            r'(?:\\s*[\\w\\s\\(\\)]+\\s+\\d[\\d\\.,]+\\s*\\n){3,}',
             # Lines with | or tab separators
-            r'(?:[^\n]+[\|\t][^\n]+\n){3,}',
+            r'(?:[^\\n]+[\\|\\t][^\\n]+\\n){3,}',
             # Indented blocks with numbers
-            r'(?:\s{2,}[\w\s]+\s{2,}\d[\d\.,]+\s*\n){3,}'
+            r'(?:\\s{2,}[\\w\\s]+\\s{2,}\\d[\\d\\.,]+\\s*\\n){3,}'
         ]
         
         chunks = []
@@ -52,7 +52,7 @@ class TableDetector:
     def _is_likely_table(self, text: str) -> bool:
         """Check if text chunk is likely to be a table."""
         # Must have multiple lines
-        lines = text.strip().split('\n')
+        lines = text.strip().split('\\n')
         if len(lines) < 3:
             return False
             
@@ -66,7 +66,7 @@ class TableDetector:
             return False
             
         # Must contain numbers
-        if not re.search(r'\d[\d\.,]+', text):
+        if not re.search(r'\\d[\\d\\.,]+', text):
             return False
             
         return True
@@ -75,7 +75,7 @@ class TableDetector:
         """Extract structured data from a table chunk."""
         try:
             # Look for scope 1/2 emissions values
-            scope_pattern = r'(?i)scope\s*([12]).*?(\d[\d\.,]+)\s*(mt|tons?|tonnes)'
+            scope_pattern = r'(?i)scope\\s*([12]).*?(\\d[\\d\\.,]+)\\s*(mt|tons?|tonnes)'
             
             matches = re.finditer(scope_pattern, text)
             data = {}
@@ -106,16 +106,16 @@ class TableDetector:
                     if keyword in text_lower)
         
         # Contains years
-        score += len(re.findall(r'\b20\d{2}\b', text)) * 0.5
+        score += len(re.findall(r'\\b20\\d{2}\\b', text)) * 0.5
         
         # Contains numbers in typical emissions ranges
         numbers = [float(n.replace(',', '')) 
-                  for n in re.findall(r'\d[\d\.,]+', text)]
+                  for n in re.findall(r'\\d[\\d\\.,]+', text)]
         score += sum(0.5 for n in numbers 
                     if 100 <= n <= 10_000_000)  # Typical scope 1/2 range
         
         # Has consistent tabular structure
-        if re.search(r'(?:\s*\S+\s+\d+\s*\n){3,}', text):
+        if re.search(r'(?:\\s*\\S+\\s+\\d+\\s*\\n){3,}', text):
             score += 2.0
             
         return score
