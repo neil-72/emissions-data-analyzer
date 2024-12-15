@@ -10,16 +10,17 @@ from ..config import MAX_PDF_SIZE
 
 class DocumentHandler:
     EMISSIONS_KEYWORDS = [
-        # Original scope patterns but with more flexible matching
+        # Scope patterns with variants
         r'(?i)scope\s*1(?:[,\s]|$)', r'(?i)scope\s*2(?:[,\s]|$)', r'(?i)scope\s*3(?:[,\s]|$)',
-        # Keep original keywords but add case-insensitive matching
+        r'(?i)tier\s*1(?:[,\s]|$)', r'(?i)tier\s*2(?:[,\s]|$)', r'(?i)tier\s*3(?:[,\s]|$)',
+        # Original keywords with case-insensitive matching
         r'(?i)ghg emissions', r'(?i)co2', r'(?i)greenhouse gas',
         r'(?i)carbon emissions', r'(?i)carbon footprint',
         r'(?i)direct emissions', r'(?i)indirect emissions'
     ]
     UNIT_KEYWORDS = [
         r'(?i)metric tons?', r'(?i)tonnes?', r'(?i)tons?', r'(?i)kg', r'(?i)kilograms?',
-        r'(?i)mtco2e?'  # Add common CO2 equivalent unit
+        r'(?i)mtco2e?'  # Common CO2 equivalent unit
     ]
 
     @staticmethod
@@ -88,21 +89,57 @@ class DocumentHandler:
     @staticmethod
     def _table_has_emissions_data(table: List[List[str]]) -> bool:
         """Check if a table contains emissions-related data."""
-        for row in table:
-            row_text = " ".join(cell.lower() for cell in row if cell)
+        if not table or len(table) < 2:  # Need at least header + data
+            return False
+            
+        # Check header/first row for scope/tier and unit info
+        header = " ".join(str(cell).lower() for cell in table[0] if cell)
+        has_scope = any(re.search(pattern, header) for pattern in [
+            r'(?i)scope\s*[123]', r'(?i)tier\s*[123]'
+        ])
+        has_units = any(re.search(unit, header) for unit in DocumentHandler.UNIT_KEYWORDS)
+        
+        if has_scope or has_units:
+            # If header has scope or units, check other rows for the missing element
+            for row in table[1:]:
+                row_text = " ".join(str(cell).lower() for cell in row if cell)
+                # If header had scope, look for numbers/units
+                if has_scope and re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', row_text):
+                    return True
+                # If header had units, look for scope references
+                if has_units and any(re.search(pattern, row_text) for pattern in [
+                    r'(?i)scope\s*[123]', r'(?i)tier\s*[123]'
+                ]):
+                    return True
+        
+        # Check each row for emissions keywords
+        for i, row in enumerate(table):
+            row_text = " ".join(str(cell).lower() for cell in row if cell)
             if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS):
-                return True
+                # Found keyword, check this and adjacent rows for numbers
+                start_idx = max(0, i - 1)
+                end_idx = min(len(table), i + 2)
+                for check_row in table[start_idx:end_idx]:
+                    check_text = " ".join(str(cell).lower() for cell in check_row if cell)
+                    if re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', check_text):
+                        return True
         return False
 
     @staticmethod
     def _format_table(table: List[List[str]]) -> str:
         """Format table rows into a readable string with units."""
         formatted_rows = []
+        table_text = " ".join(" ".join(str(cell).lower() for cell in row if cell) for row in table)
+        
+        # Try to find units in entire table first
+        table_units = [u for u in DocumentHandler.UNIT_KEYWORDS if re.search(u, table_text)]
+        default_unit = table_units[0] if table_units else "unknown unit"
+        
         for row in table:
-            # Extract the unit if present in the row
+            # Check for unit in this specific row
             row_text = " ".join(cell or "" for cell in row)
-            units = [u for u in DocumentHandler.UNIT_KEYWORDS if re.search(u, row_text.lower())]
-            unit = units[0] if units else "unknown unit"
+            row_units = [u for u in DocumentHandler.UNIT_KEYWORDS if re.search(u, row_text.lower())]
+            unit = row_units[0] if row_units else default_unit
 
             # Append formatted row with detected unit
             formatted_rows.append("\t".join(cell or "" for cell in row) + f" ({unit})")
