@@ -13,10 +13,8 @@ class EmissionsTracker:
             self.search_client = BraveSearchClient()
             self.analyzer = EmissionsAnalyzer()
             self.document_handler = DocumentHandler()
-            
-            # Ensure output directory exists
+
             os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
-            
         except Exception as e:
             logging.error(f"Failed to initialize EmissionsTracker: {str(e)}")
             raise
@@ -26,10 +24,10 @@ class EmissionsTracker:
         if not company_name or not company_name.strip():
             logging.error("Invalid company name provided")
             return None
-            
+
         try:
             logging.info(f"Starting analysis for {company_name}")
-            
+
             # Step 1: Search for report
             report_data = self.search_client.search_sustainability_report(company_name)
             if not report_data:
@@ -45,12 +43,12 @@ class EmissionsTracker:
 
             text_length = len(text_content)
             logging.info(f"Successfully extracted text ({text_length:,} characters)")
-            
+
             if text_length < 1000:
                 logging.warning("Extracted text suspiciously short")
                 return None
-            
-            # Step 3: Analyze for emissions data
+
+            # Step 3: Analyze for emissions data (now includes sector and previous years)
             emissions_data = self.analyzer.extract_emissions_data(text_content)
             if not emissions_data:
                 logging.warning("No emissions data found in text")
@@ -64,7 +62,7 @@ class EmissionsTracker:
                 "emissions_data": emissions_data,
                 "processed_at": self._get_timestamp()
             }
-            
+
             # Save results
             self._save_results(company_name, result)
             logging.info("Analysis complete")
@@ -73,14 +71,14 @@ class EmissionsTracker:
         except Exception as e:
             logging.error(f"Error processing {company_name}: {str(e)}")
             return None
-            
+
     def _save_results(self, company_name: str, data: Dict):
         """Save results to JSON file."""
         filename = os.path.join(
-            DEFAULT_OUTPUT_DIR, 
+            DEFAULT_OUTPUT_DIR,
             f"{company_name.lower().replace(' ', '_')}.json"
         )
-        
+
         try:
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -97,31 +95,32 @@ def main():
     """Main entry point for command line usage."""
     try:
         tracker = EmissionsTracker()
-        
+
         print("\nEmissions Data Analyzer")
         print("----------------------")
         print("Enter company names (or 'quit' to exit)")
-        
+
         while True:
             try:
                 company_name = input("\nCompany name: ").strip()
                 if company_name.lower() in ['quit', 'exit', 'q']:
                     break
-                    
+
                 if not company_name:
                     continue
-                    
+
                 result = tracker.process_company(company_name)
                 if result:
                     print("\nResults found:")
+                    # Now includes sector and previous_years_data if found
                     print(json.dumps(result, indent=2, ensure_ascii=False))
                 else:
                     print("\nNo results found")
-                    
+
             except KeyboardInterrupt:
                 print("\nOperation cancelled")
                 continue
-                
+
     except KeyboardInterrupt:
         print("\nProgram terminated by user")
     except Exception as e:
