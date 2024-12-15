@@ -1,6 +1,12 @@
 import requests
 from typing import Dict, List, Optional
-from ..config import BRAVE_API_KEY, SEARCH_YEARS
+import logging
+from ..config import (
+    BRAVE_API_KEY, 
+    SEARCH_YEARS, 
+    MAX_RESULTS_PER_SEARCH,
+    VALID_DOMAINS
+)
 
 class BraveSearchClient:
     def __init__(self):
@@ -13,15 +19,18 @@ class BraveSearchClient:
 
     def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
         """Search specifically for official company sustainability reports."""
-        # Start with most recent year
-        for year in [2024, 2023]:
-            print(f"Searching for {company_name} {year} sustainability report...")
+        if not company_name.strip():
+            logging.error("Empty company name provided")
+            return None
             
-            # Try different report naming conventions
+        for year in SEARCH_YEARS:
+            logging.info(f"Searching for {company_name} {year} sustainability report...")
+            
             search_terms = [
                 f"{company_name} sustainability report {year} filetype:pdf",
                 f"{company_name} corporate responsibility report {year} filetype:pdf",
-                f"{company_name} ESG report {year} filetype:pdf"
+                f"{company_name} ESG report {year} filetype:pdf",
+                f"{company_name} environmental report {year} filetype:pdf"
             ]
             
             for search_term in search_terms:
@@ -29,7 +38,7 @@ class BraveSearchClient:
                     response = requests.get(
                         self.base_url,
                         headers=self.headers,
-                        params={"q": search_term, "count": 5}
+                        params={"q": search_term, "count": MAX_RESULTS_PER_SEARCH}
                     )
                     response.raise_for_status()
                     results = response.json()
@@ -37,13 +46,10 @@ class BraveSearchClient:
                     if results.get("web", {}).get("results"):
                         for result in results["web"]["results"]:
                             url = result["url"].lower()
-                            # Only consider PDFs from company domains
-                            if (
-                                company_name.lower() in url 
-                                and url.endswith('.pdf')
-                                and any(domain in url for domain in [".com", ".org", ".net"])
-                            ):
-                                print(f"Found potential report: {result['url']}")
+                            
+                            # Validate URL
+                            if self._is_valid_report_url(url, company_name):
+                                logging.info(f"Found potential report: {result['url']}")
                                 return {
                                     "url": result["url"],
                                     "title": result["title"],
@@ -51,9 +57,24 @@ class BraveSearchClient:
                                     "description": result.get("description", "")
                                 }
 
+                except requests.RequestException as e:
+                    logging.error(f"Network error in search '{search_term}': {str(e)}")
+                    continue
                 except Exception as e:
-                    print(f"Error in search {search_term}: {str(e)}")
+                    logging.error(f"Unexpected error in search '{search_term}': {str(e)}")
                     continue
 
-        print("No official sustainability report found")
+        logging.warning("No official sustainability report found")
         return None
+
+    def _is_valid_report_url(self, url: str, company_name: str) -> bool:
+        """Validate if URL is likely an official company report."""
+        url_lower = url.lower()
+        company_lower = company_name.lower()
+        
+        return all([
+            url_lower.endswith('.pdf'),
+            company_lower in url_lower,
+            any(domain in url_lower for domain in VALID_DOMAINS),
+            not any(term in url_lower for term in ['linkedin', 'facebook', 'twitter'])
+        ])
