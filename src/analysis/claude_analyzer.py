@@ -8,9 +8,18 @@ class EmissionsAnalyzer:
 
     def extract_emissions_data(self, text: str) -> Dict:
         """Extract emissions data using Claude."""
+        print("\nStarting emissions data extraction...")
+        print(f"Text length: {len(text)} characters")
+        
         prompt = f"""
-        Extract Scope 1 and Scope 2 carbon emissions data from this text.
-        Return only a JSON object with this structure:
+        You are analyzing a sustainability report to extract carbon emissions data.
+        Focus only on finding Scope 1 and Scope 2 emissions numbers.
+        If you find multiple years of data, use the most recent year.
+        
+        Text to analyze:
+        {text[:50000]}  # Limiting text length
+
+        Return ONLY a JSON object with this structure, nothing else:
         {{
             "scope_1": {{
                 "value": number,
@@ -24,22 +33,26 @@ class EmissionsAnalyzer:
             }},
             "context": "string explaining trends or notes"
         }}
-
-        Text to analyze:
-        {text}
         """
 
         try:
-            response = self.client.beta.messages.create(
+            print("Sending request to Claude...")
+            response = self.client.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=1024,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
             )
             
-            return response.content[0].text
+            if hasattr(response, 'content') and len(response.content) > 0:
+                content = response.content[0].text
+                print(f"Response received: {content[:200]}...")
+                return content
+            else:
+                print("No content in response")
+                return None
+
         except Exception as e:
-            print(f"Error analyzing with Claude: {str(e)}")
+            print(f"Detailed error in Claude analysis: {str(e)}")
+            print(f"Error type: {type(e)}")
             return None
