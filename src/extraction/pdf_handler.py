@@ -1,12 +1,11 @@
-import PyPDF2
+import pdfplumber
 import requests
 from typing import Optional, List, Dict
 import io
-from bs4 import BeautifulSoup
-import time
 from urllib.parse import urljoin
 import logging
 import re
+from bs4 import BeautifulSoup
 from ..config import MAX_PDF_SIZE
 
 class DocumentHandler:
@@ -15,7 +14,8 @@ class DocumentHandler:
         'greenhouse gas', 'carbon emissions', 'carbon footprint',
         'direct emissions', 'indirect emissions',
         'metric tons co2e', 'tonnes co2e', 'emissions summary',
-        'climate data', 'environmental metrics'
+        'climate data', 'environmental metrics',
+        'energy use', 'carbon reduction', 'renewable energy emissions'
     ]
 
     # Patterns to identify tables or numeric data that might appear in tabular form.
@@ -43,35 +43,8 @@ class DocumentHandler:
                     logging.warning(f"PDF too large: {content_length} bytes")
                     return None
 
-                pdf_content = bytearray()
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        pdf_content.extend(chunk)
-
-                pdf_file = io.BytesIO(pdf_content)
-                pdf_reader = PyPDF2.PdfReader(pdf_file)
-
-                text_content = []
-                for page_num, page in enumerate(pdf_reader.pages):
-                    try:
-                        raw_text = page.extract_text()
-                        if raw_text and DocumentHandler._has_emissions_data(raw_text):
-                            processed_text = DocumentHandler._process_table_text(raw_text)
-                            marked_text = f"=== START PAGE {page_num + 1} ===\n{processed_text}\n=== END PAGE {page_num + 1} ==="
-                            text_content.append(marked_text)
-                        else:
-                            # Even if page isn't rich in emissions data, still keep it:
-                            # Claude might cross-reference sections.
-                            text_content.append(raw_text if raw_text else "")
-                    except Exception as e:
-                        logging.warning(f"Page {page_num + 1} extraction failed: {str(e)}")
-                        continue
-
-                if not text_content:
-                    logging.warning("No text content extracted from PDF")
-                    return None
-
-                return "\n".join(text_content)
+                pdf_content = io.BytesIO(response.content)
+                return DocumentHandler.extract_text_with_plumber(pdf_content)
 
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 403:
@@ -91,6 +64,35 @@ class DocumentHandler:
         return None
 
     @staticmethod
+    def extract_text_with_plumber(pdf_content: io.BytesIO) -> Optional[str]:
+        """Extract structured text and tables from PDF using pdfplumber."""
+        try:
+            with pdfplumber.open(pdf_content) as pdf:
+                text_content = []
+                for page in pdf.pages:
+                    # Extract text
+                    page_text = page.extract_text()
+                    if page_text and DocumentHandler._has_emissions_data(page_text):
+                        text_content.append(f"=== START PAGE ===\n{page_text}\n=== END PAGE ===")
+
+                    # Extract tables
+                    tables = page.extract_tables()
+                    for table in tables:
+                        for row in table:
+                            row_text = "\t".join(cell for cell in row if cell)
+                            text_content.append(row_text)
+                
+                if not text_content:
+                    logging.warning("No text content extracted from PDF")
+                    return None
+                
+                return "\n".join(text_content)
+
+        except Exception as e:
+            logging.error(f"Error during pdfplumber extraction: {str(e)}")
+            return None
+
+    @staticmethod
     def _has_emissions_data(text: str) -> bool:
         """Check if text contains potential emissions data."""
         text_lower = text.lower()
@@ -106,33 +108,6 @@ class DocumentHandler:
 
         # More lenient conditions: If we have at least two keywords or at least one keyword plus a table pattern or numeric data, consider relevant.
         return (keyword_matches >= 2) or (keyword_matches >= 1 and (has_table or has_years or len(valid_numbers) > 0))
-
-    @staticmethod
-    def _process_table_text(text: str) -> str:
-        """Process and preserve structure for text containing tables."""
-        lines = text.split('\n')
-        processed_lines = []
-        in_table = False
-
-        for line in lines:
-            line = line.rstrip()
-            if not line:
-                # Blank line likely ends a table section
-                in_table = False
-                continue
-
-            # Check if this line looks like part of a table or numeric data line
-            if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in DocumentHandler.TABLE_PATTERNS):
-                in_table = True
-
-            if in_table:
-                # Keep table-like structure as is
-                processed_lines.append(line)
-            else:
-                # For non-table lines, strip multiple spaces but keep the line content
-                processed_lines.append(' '.join(line.split()))
-
-        return '\n'.join(processed_lines)
 
     @staticmethod
     def _get_alternative_urls(url: str) -> List[str]:
@@ -190,3 +165,4 @@ class DocumentHandler:
             return DocumentHandler.extract_text_from_pdf(url)
         else:
             return DocumentHandler.extract_text_from_webpage(url)
+         
