@@ -20,10 +20,26 @@ class DocumentHandler:
         r'(?i)net carbon footprint', r'(?i)total emissions', r'(?i)subtotal emissions',
         r'(?i)carbon offsets'
     ]
+
     UNIT_KEYWORDS = [
         r'(?i)metric tons?', r'(?i)tonnes?', r'(?i)tons?', r'(?i)kg', r'(?i)kilograms?',
         r'(?i)mtco2e?', r'(?i)000\s*tonnes?', r'(?i)mt\s*co2'
     ]
+
+    UNIT_NORMALIZATION = {
+        r"(?i)mtco2e?": "metric tons CO2e",
+        r"(?i)tco2e?": "metric tons CO2e",
+        r"(?i)kilotonnes?": "thousand metric tons CO2e",
+        r"(?i)tons?": "metric tons",
+        r"(?i)thousand metric tons": "thousand metric tons",
+    }
+
+    @staticmethod
+    def _normalize_unit(unit_text: str) -> str:
+        for pattern, normalized_unit in DocumentHandler.UNIT_NORMALIZATION.items():
+            if re.search(pattern, unit_text):
+                return normalized_unit
+        return "unknown unit"
 
     @staticmethod
     def extract_text_from_pdf(url: str, retries: int = 3) -> Optional[str]:
@@ -34,9 +50,10 @@ class DocumentHandler:
                 response = requests.get(url, headers=headers, stream=True, timeout=30)
                 response.raise_for_status()
 
-                if int(response.headers.get('content-length', 0)) > MAX_PDF_SIZE:
-                    logging.warning(f"PDF too large: {response.headers.get('content-length')} bytes")
-                    return None
+                content_length = int(response.headers.get('content-length', 0))
+                if content_length > MAX_PDF_SIZE:
+                    logging.warning(f"PDF too large: {content_length} bytes, attempting chunked processing.")
+                    return DocumentHandler._process_large_pdf(response.content)
 
                 pdf_content = io.BytesIO(response.content)
                 return DocumentHandler._extract_with_plumber(pdf_content)
@@ -49,24 +66,57 @@ class DocumentHandler:
         return None
 
     @staticmethod
+    def _process_large_pdf(pdf_bytes: bytes) -> Optional[str]:
+        """Process large PDFs by extracting text in chunks."""
+        try:
+            pdf_stream = io.BytesIO(pdf_bytes)
+            with pdfplumber.open(pdf_stream) as pdf:
+                relevant_content = []
+                for page_num, page in enumerate(pdf.pages):
+                    page_text = page.extract_text() or ""
+                    # Use context extraction if emissions data is found
+                    if DocumentHandler._has_emissions_data(page_text):
+                        context_text = DocumentHandler._extract_with_context(pdf, page_num)
+                        if context_text:
+                            relevant_content.append(context_text)
+                    
+                    # Extract tables
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if DocumentHandler._table_has_emissions_data(table):
+                            filtered_rows = DocumentHandler._filter_emissions_rows(table)
+                            if filtered_rows:
+                                formatted_table = DocumentHandler._format_table(filtered_rows)
+                                relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{formatted_table}")
+
+                return "\n".join(relevant_content) if relevant_content else None
+        except Exception as e:
+            logging.error(f"Error processing large PDF: {str(e)}")
+            return None
+
+    @staticmethod
     def _extract_with_plumber(pdf_content: io.BytesIO) -> Optional[str]:
         """Extract text and tables from a PDF using pdfplumber."""
         try:
             with pdfplumber.open(pdf_content) as pdf:
                 relevant_content = []
                 for page_num, page in enumerate(pdf.pages):
-                    page_text = page.extract_text()
-                    tables = page.extract_tables()
+                    page_text = page.extract_text() or ""
+                    # If emissions data is found on this page, extract with context
+                    if DocumentHandler._has_emissions_data(page_text):
+                        context_text = DocumentHandler._extract_with_context(pdf, page_num)
+                        if context_text:
+                            relevant_content.append(context_text)
 
-                    # Check for emissions-related content
-                    if DocumentHandler._has_emissions_data(page_text or ""):
-                        relevant_content.append(f"=== PAGE {page_num + 1} TEXT ===\n{page_text}")
-                    
+                    # Extract tables from this page
+                    tables = page.extract_tables()
                     for table in tables:
                         if DocumentHandler._table_has_emissions_data(table):
-                            formatted_table = DocumentHandler._format_table(table)
-                            relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{formatted_table}")
-                
+                            filtered_rows = DocumentHandler._filter_emissions_rows(table)
+                            if filtered_rows:
+                                formatted_table = DocumentHandler._format_table(filtered_rows)
+                                relevant_content.append(f"=== PAGE {page_num + 1} TABLE ===\n{formatted_table}")
+
                 if not relevant_content:
                     logging.warning("No emissions-related content found.")
                     return None
@@ -78,19 +128,33 @@ class DocumentHandler:
             return None
 
     @staticmethod
+    def _extract_with_context(pdf, page_num: int, context_window: int = 1) -> Optional[str]:
+        """Extract content from the target page with surrounding context."""
+        sections = []
+        start = max(0, page_num - context_window)
+        end = min(len(pdf.pages), page_num + context_window + 1)
+
+        for i in range(start, end):
+            page_text = pdf.pages[i].extract_text() or ""
+            if i == page_num or DocumentHandler._has_emissions_data(page_text):
+                sections.append(f"=== PAGE {i + 1} ===\n{page_text}")
+
+        return "\n\n".join(sections) if sections else None
+
+    @staticmethod
     def _has_emissions_data(text: str) -> bool:
-        """Check if text contains emissions-related keywords."""
+        """Check if text contains emissions-related keywords and numbers."""
         if not text:
             return False
         text_lower = text.lower()
         has_keywords = any(re.search(keyword, text_lower) for keyword in DocumentHandler.EMISSIONS_KEYWORDS)
-        has_numbers = bool(re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', text_lower))  # Handles scientific notation
+        has_numbers = bool(re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', text_lower))
         return has_keywords and has_numbers
 
     @staticmethod
     def _table_has_emissions_data(table: List[List[str]]) -> bool:
         """Check if a table contains emissions-related data."""
-        if not table or len(table) < 2:  # Need at least header + data
+        if not table or len(table) < 2:
             return False
             
         # Check header/first row for scope/tier and unit info
@@ -102,10 +166,10 @@ class DocumentHandler:
         if has_scope or has_units:
             for row in table[1:]:
                 row_text = " ".join(str(cell).lower() for cell in row if cell)
-                if re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', row_text):  # Numbers in rows
+                if re.search(r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:e[+-]?\d+)?\b', row_text):
                     return True
 
-        # Keyword and number check for specific rows
+        # Check row-level if header doesn't suffice
         for row in table:
             row_text = " ".join(str(cell).lower() for cell in row if cell)
             if any(re.search(keyword, row_text) for keyword in DocumentHandler.EMISSIONS_KEYWORDS) and re.search(r'\d+', row_text):
@@ -113,28 +177,42 @@ class DocumentHandler:
         return False
 
     @staticmethod
+    def _filter_emissions_rows(table: List[List[str]]) -> List[List[str]]:
+        """Filter rows that contain emissions-related data."""
+        filtered_rows = []
+        for row in table:
+            row_text = " ".join(str(cell) for cell in row if cell)
+            if any(re.search(pattern, row_text.lower()) for pattern in DocumentHandler.EMISSIONS_KEYWORDS):
+                filtered_rows.append(row)
+        return filtered_rows
+
+    @staticmethod
     def _format_table(table: List[List[str]]) -> str:
-        """Format table rows into a readable string with units."""
-        formatted_rows = []
+        """Format table rows into a readable string with normalized units."""
+        if not table:
+            return ""
+
+        # Extract a default unit from the entire table text
         table_text = " ".join(" ".join(str(cell).lower() for cell in row if cell) for row in table)
-        
-        # Try to find units in entire table first
         table_units = [u for u in DocumentHandler.UNIT_KEYWORDS if re.search(u, table_text)]
         default_unit = table_units[0] if table_units else "unknown unit"
-        
+        default_unit = DocumentHandler._normalize_unit(default_unit)
+
+        formatted_rows = []
         for row in table:
             # Check for unit in this specific row
             row_text = " ".join(cell or "" for cell in row)
             row_units = [u for u in DocumentHandler.UNIT_KEYWORDS if re.search(u, row_text.lower())]
             unit = row_units[0] if row_units else default_unit
+            unit = DocumentHandler._normalize_unit(unit)
 
-            # Append formatted row with detected unit
+            # Append formatted row with detected normalized unit
             formatted_rows.append("\t".join(cell or "" for cell in row) + f" ({unit})")
         return "\n".join(formatted_rows)
 
     @staticmethod
     def extract_text_from_webpage(url: str) -> Optional[str]:
-        """Extract text from a webpage."""
+        """Extract text and table data from a webpage."""
         headers = {'User-Agent': 'Mozilla/5.0'}
         try:
             response = requests.get(url, headers=headers, timeout=30)
@@ -144,14 +222,34 @@ class DocumentHandler:
             for element in soup(["script", "style", "nav", "footer", "header"]):
                 element.decompose()
 
+            # Extract text
             main_content = soup.find(["main", "article", "div", "body"])
-            text = main_content.get_text() if main_content else soup.get_text()
+            if main_content:
+                text = main_content.get_text()
+            else:
+                text = soup.get_text()
 
-            lines = (line.strip() for line in text.splitlines())
-            return ' '.join(phrase for line in lines for phrase in line.split("  ") if phrase)
+            # Extract table data
+            tables = soup.find_all("table")
+            table_texts = []
+            for tbl in tables:
+                rows = tbl.find_all("tr")
+                for row in rows:
+                    cells = row.find_all(["td", "th"])
+                    row_text = [cell.get_text(strip=True) for cell in cells if cell.get_text(strip=True)]
+                    if row_text:
+                        table_texts.append("\t".join(row_text))
+            table_content = "\n".join(table_texts)
+
+            combined_text = text + "\n" + table_content if table_content else text
+
+            # Clean extra whitespace
+            lines = (line.strip() for line in combined_text.splitlines())
+            cleaned_text = ' '.join(phrase for line in lines for phrase in line.split("  ") if phrase)
+            return cleaned_text
 
         except Exception as e:
-            logging.error(f"Error extracting webpage text: {str(e)}")
+            logging.error(f"Error extracting webpage content: {str(e)}")
             return None
 
     @staticmethod
