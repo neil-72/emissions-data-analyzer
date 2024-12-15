@@ -10,13 +10,16 @@ from ..config import MAX_PDF_SIZE
 
 class DocumentHandler:
     EMISSIONS_KEYWORDS = [
-        r'(?i)scope\s*1', r'(?i)scope\s*2', r'(?i)scope\s*3',
-        'ghg emissions', 'co2', 'greenhouse gas',
-        'carbon emissions', 'carbon footprint',
-        'direct emissions', 'indirect emissions'
+        # Original scope patterns but with more flexible matching
+        r'(?i)scope\s*1(?:[,\s]|$)', r'(?i)scope\s*2(?:[,\s]|$)', r'(?i)scope\s*3(?:[,\s]|$)',
+        # Keep original keywords but add case-insensitive matching
+        r'(?i)ghg emissions', r'(?i)co2', r'(?i)greenhouse gas',
+        r'(?i)carbon emissions', r'(?i)carbon footprint',
+        r'(?i)direct emissions', r'(?i)indirect emissions'
     ]
     UNIT_KEYWORDS = [
-        r'metric tons', r'tonnes', r'tons', r'kg', r'kilograms'
+        r'(?i)metric tons?', r'(?i)tonnes?', r'(?i)tons?', r'(?i)kg', r'(?i)kilograms?',
+        r'(?i)mtco2e?'  # Add common CO2 equivalent unit
     ]
 
     @staticmethod
@@ -74,8 +77,13 @@ class DocumentHandler:
     @staticmethod
     def _has_emissions_data(text: str) -> bool:
         """Check if text contains emissions-related keywords."""
+        if not text:
+            return False
         text_lower = text.lower()
-        return any(re.search(keyword, text_lower) for keyword in DocumentHandler.EMISSIONS_KEYWORDS)
+        # Add number pattern check alongside keywords
+        has_keywords = any(re.search(keyword, text_lower) for keyword in DocumentHandler.EMISSIONS_KEYWORDS)
+        has_numbers = bool(re.search(r'\d+(?:,\d{3})*(?:\.\d+)?', text_lower))
+        return has_keywords and has_numbers
 
     @staticmethod
     def _table_has_emissions_data(table: List[List[str]]) -> bool:
