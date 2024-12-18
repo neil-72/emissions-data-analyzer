@@ -1,11 +1,10 @@
 import os
 from pathlib import Path
+from datetime import datetime
 
 # Base directories
 BASE_DIR = Path(__file__).parent.parent
 DEFAULT_OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
-
-# Create output directory if it doesn't exist
 os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
 
 # API Settings
@@ -28,5 +27,17 @@ MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB
 PDF_TIMEOUT = 30  # seconds
 
 # Search settings
-SEARCH_RESULTS_LIMIT = 5
+SEARCH_YEARS = [datetime.now().year, datetime.now().year - 1]  # Current and previous year
+MAX_RESULTS_PER_SEARCH = 5
 MAX_REPORT_AGE_YEARS = 2
+
+# Unit conversion settings
+DEFAULT_UNIT = 'metric tons CO2e'
+VALID_UNITS = [
+    'metric tons CO2e',
+    'tonnes CO2e',
+    'tCO2e',
+    'million metric tons CO2e',
+    'kilotons CO2e',
+    'short tons CO2e'
+]
