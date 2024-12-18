@@ -33,7 +33,16 @@ class DocumentHandler:
                 logging.warning(f"URL {url} does not point to a PDF")
                 return None
 
-            return self._extract_content(io.BytesIO(response.content))
+            extracted = self._extract_content(io.BytesIO(response.content))
+
+            # >>> ADD THESE LINES <<<
+            # For testing: write the extracted raw text to a file so you can inspect it
+            if extracted:
+                with open("raw_extracted_data.txt", "w", encoding="utf-8") as f:
+                    f.write(extracted)
+            # >>> END OF ADDED LINES <<<
+
+            return extracted
 
         except Exception as e:
             logging.error(f"Failed to get document: {str(e)}")
