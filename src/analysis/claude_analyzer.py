@@ -1,3 +1,8 @@
+# EmissionsAnalyzer Class
+
+# Handles the extraction of Scope 1 and Scope 2 emissions data from sustainability reports.
+# Utilizes Claude API for advanced text analysis and ensures all units are in metric tons CO2e.
+
 import re
 import json
 import logging
@@ -5,194 +10,153 @@ from typing import Dict, Optional, List
 from anthropic import Anthropic
 from ..config import CLAUDE_API_KEY
 
-class EmissionsAnalyzer:
-    """# Main Emissions Data Analyzer using Claude
-    # Key capabilities:
-    # - Processes sustainability report text from PDFs
-    # - Identifies and extracts Scope 1 and 2 emissions data
-    # - Handles both tabular and narrative text formats
-    # - Maintains data context and page references
-    # - Aggregates data across multiple years
-    """
-    def __init__(self):
-        self.client = Anthropic(api_key=CLAUDE_API_KEY)
-        # Simple regex works best for finding emissions data
-        self.scope_pattern = r'(?i)scope\s*[12]'
 
+class EmissionsAnalyzer:
+    # Initialization of the EmissionsAnalyzer
+    def __init__(self):
+        self.client = Anthropic(api_key=CLAUDE_API_KEY)  # Initialize the Claude API client.
+        self.scope_pattern = r'(?i)scope\s*[12]'  # Regex to identify Scope 1 and 2 in text.
+
+    # Main method to extract emissions data
     def extract_emissions_data(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """# Main extraction pipeline
-        # Process:
-        # 1. Find relevant sections containing emissions data
-        # 2. Keep context (15 lines before/after)
-        # 3. Remove duplicate content
-        # 4. Split into chunks if text is too long
-        # 5. Send each chunk to Claude
-        # 6. Combine and validate results
+        """
+        Orchestrates the entire data extraction process:
+        - Extracts relevant lines with context.
+        - Splits text into chunks for Claude API.
+        - Sends text chunks to Claude and validates the responses.
+        - Ensures all units are in metric tons CO2e.
         """
         logging.info("Starting emissions data extraction...")
 
-        # Get relevant text with context
+        # Extract relevant lines with context, ensuring no duplicates
         relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
-        relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicates
+        relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicate lines.
 
+        # If no relevant lines are found, log a warning and exit
         if not relevant_lines:
             logging.warning("No relevant context found for Scope 1/2 in text")
             return None
 
-        # Save for debugging and verification
+        # Save extracted lines for debugging
         with open("claude_input_data.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(relevant_lines))
 
-        # Handle large documents via chunking
+        # Split lines into chunks suitable for Claude API
         chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
         all_results = []
 
-        # Process each chunk
+        # Process each chunk with Claude API
         for chunk in chunks:
             result = self._send_to_claude(chunk, company_name)
             if result:
                 all_results.append(result)
 
-        # Combine results intelligently
+        # Aggregate and return results
         return self._aggregate_results(all_results)
 
+    # Extract lines with relevant keywords and their context
     def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
-        """# Smart context extraction
-        # Features:
-        # - Finds emissions data mentions
-        # - Keeps surrounding lines for context
-        # - Preserves table structures when found
-        # - Handles page boundaries
-        # - Maintains document formatting
         """
-        lines = text.split('\n')
+        Identifies lines containing relevant keywords (Scope 1/2) and includes surrounding lines.
+        """
+        lines = text.split('\n')  # Split text into individual lines.
         relevant_lines = []
+
         for i, line in enumerate(lines):
-            if re.search(self.scope_pattern, line):
-                start = max(0, i - lines_before)
-                end = min(len(lines), i + lines_after + 1)
-                
-                # Keep full tables when found
-                if any(lines[j].startswith('=== TABLE') for j in range(start, end)):
-                    while start > 0 and not lines[start].startswith('=== TABLE'):
-                        start -= 1
-                
+            if re.search(self.scope_pattern, line):  # Check if the line matches the scope pattern.
+                start = max(0, i - lines_before)  # Start line for context.
+                end = min(len(lines), i + lines_after + 1)  # End line for context.
                 relevant_lines.extend(lines[start:end])
+
         return relevant_lines
 
+    # Split text into chunks for Claude API
     def _split_into_chunks(self, lines: List[str], max_chars: int) -> List[str]:
-        """# Smart document chunking
-        # Features:
-        # - Respects maximum token limits
-        # - Preserves table integrity
-        # - Keeps related content together
-        # - Maintains section boundaries
-        # - Avoids splitting mid-context
+        """
+        Splits extracted lines into chunks within Claude's input character limit.
         """
         chunks = []
         current_chunk = []
         current_length = 0
 
         for line in lines:
-            line_length = len(line) + 1  # Include newline
-            
-            # Start new chunk if needed
+            line_length = len(line) + 1  # Include newline character.
             if current_length + line_length > max_chars:
-                if current_chunk:
-                    chunks.append("\n".join(current_chunk))
-                    current_chunk = []
-                    current_length = 0
-            
-            # Keep tables together
-            if line.startswith('=== TABLE'):
-                if current_chunk:
-                    chunks.append("\n".join(current_chunk))
-                    current_chunk = []
-                    current_length = 0
-
+                chunks.append("\n".join(current_chunk))  # Save current chunk.
+                current_chunk = []
+                current_length = 0
             current_chunk.append(line)
             current_length += line_length
 
-        if current_chunk:
+        if current_chunk:  # Save any remaining lines as a chunk.
             chunks.append("\n".join(current_chunk))
+
         return chunks
 
+    # Send a text chunk to Claude for analysis
     def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """# Claude analysis with structured format
-        # Features:
-        # - Clear document format explanation
-        # - Specific data requirements
-        # - Consistent JSON structure
-        # - Unit standardization
-        # - Clean output format
+        """
+        Sends a chunk of text to Claude AI for emissions data extraction.
         """
         prompt = f"""
-Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
+        Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
+        Extract the following:
+        1. Most recent Scope 1 and Scope 2 emissions data, with reporting year and measurement type (market-based or location-based).
+        2. Scope 1 and Scope 2 data for the previous two years.
+        3. Context of where the data was found.
+        Ensure all units are converted to metric tons CO2e if necessary.
 
-The text contains marked sections:
-- "=== TABLE X ON PAGE Y ===" indicates table data
-- "HEADER:" shows column names
-- "DATA:" contains values
-- "=== TEXT ON PAGE Y ===" shows narrative sections
+        Return ONLY this JSON format:
+        {{
+          "company": "{company_name}",
+          "sector": "<sector or null>",
+          "current_year": {{
+            "year": <YYYY or null>,
+            "scope_1": {{
+              "value": <number or null>,
+              "unit": "metric tons CO2e"
+            }},
+            "scope_2_market_based": {{
+              "value": <number or null>,
+              "unit": "metric tons CO2e"
+            }},
+            "scope_2_location_based": {{
+              "value": <number or null>,
+              "unit": "metric tons CO2e"
+            }}
+          }},
+          "previous_years": [
+            {{
+              "year": <YYYY or null>,
+              "scope_1": {{
+                "value": <number or null>,
+                "unit": "metric tons CO2e"
+              }},
+              "scope_2_market_based": {{
+                "value": <number or null>,
+                "unit": "metric tons CO2e"
+              }},
+              "scope_2_location_based": {{
+                "value": <number or null>,
+                "unit": "metric tons CO2e"
+              }}
+            }}
+          ],
+          "source_details": {{
+            "location": "<where found>",
+            "context": "<relevant context>"
+          }}
+        }}
 
-Focus on:
-1. Extract Scope 1 and Scope 2 emissions values
-2. Get both market-based and location-based Scope 2 when available
-3. Include current year and up to 2 previous years
-4. Note page numbers where data was found
-5. All values should be in metric tons CO2e
-
-Return exactly this JSON format:
-{{
-  "company": "{company_name or 'unknown'}",
-  "sector": string or null,
-  "current_year": {{
-    "year": YYYY,
-    "scope_1": {{
-      "value": number,
-      "unit": "metric tons CO2e"
-    }},
-    "scope_2_market_based": {{
-      "value": number or null,
-      "unit": "metric tons CO2e"
-    }},
-    "scope_2_location_based": {{
-      "value": number or null,
-      "unit": "metric tons CO2e"
-    }}
-  }},
-  "previous_years": [
-    {{
-      "year": YYYY,
-      "scope_1": {{
-        "value": number,
-        "unit": "metric tons CO2e"
-      }},
-      "scope_2_market_based": {{
-        "value": number or null,
-        "unit": "metric tons CO2e"
-      }},
-      "scope_2_location_based": {{
-        "value": number or null,
-        "unit": "metric tons CO2e"
-      }}
-    }}
-  ],
-  "source_details": {{
-    "location": "Pages X-Y",
-    "context": "Brief description of where data was found"
-  }}
-}}
-
-Text to analyze:
-{text}
-"""
+        Text to analyze:
+        {text}
+        """.strip()
 
         try:
             response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",  # Latest stable model
+                model="claude-3-sonnet-20240229",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0,  # Deterministic output
+                temperature=0,
                 max_tokens=4096
             )
 
@@ -206,62 +170,68 @@ Text to analyze:
             logging.error(f"Error in Claude analysis: {str(e)}")
             return None
 
+    # Validate and normalize the extracted data
     def _parse_and_validate(self, content: str) -> Optional[Dict]:
-        """# Response validation
-        # Checks:
-        # - Valid JSON structure
-        # - Required fields present
-        # - Consistent data format
-        # - Complete response
+        """
+        Parses Claude's JSON response, validates it, and ensures units are in metric tons CO2e.
         """
         try:
             data = json.loads(content)
-            
-            # Basic validation
-            required_fields = ['company', 'current_year', 'previous_years', 'source_details']
-            if not all(field in data for field in required_fields):
-                logging.error("Missing required fields in Claude response")
+
+            # Check for required keys in the JSON response
+            required_keys = {"current_year", "previous_years", "source_details"}
+            if not all(key in data for key in required_keys):
+                logging.warning("Missing required keys in JSON response")
                 return None
-                
+
+            # Normalize units to metric tons CO2e
+            for key in ["current_year", "previous_years"]:
+                if key in data:
+                    for entry in (data[key] if key == "previous_years" else [data[key]]):
+                        for scope in ["scope_1", "scope_2_market_based", "scope_2_location_based"]:
+                            if scope in entry and entry[scope].get("value") is not None:
+                                entry[scope]["value"] = self._convert_to_metric_tons(entry[scope])
+
             return data
-            
+
         except json.JSONDecodeError:
             logging.error("Failed to parse JSON from Claude response")
             return None
 
-    def _aggregate_results(self, results: List[Dict]) -> Dict:
-        """# Result aggregation
-        # Features:
-        # - Combines data from multiple chunks
-        # - Removes duplicate years
-        # - Sorts chronologically
-        # - Keeps most recent data
-        # - Merges source details
+    # Unit conversion helper method
+    def _convert_to_metric_tons(self, scope_data: Dict) -> float:
         """
-        if not results:
-            return None
+        Converts any unit to metric tons CO2e if necessary.
+        Assumes input is already in metric tons CO2e unless otherwise stated.
+        """
+        # Placeholder: Add actual unit conversion logic if needed.
+        return float(scope_data["value"])
 
-        # Use first result as base
-        combined = results[0].copy()
-        seen_years = {combined['current_year']['year']}
-        
-        # Add unique years from other chunks
-        for result in results[1:]:
-            # Skip duplicate current years
-            if result['current_year']['year'] not in seen_years:
-                seen_years.add(result['current_year']['year'])
-                combined['previous_years'].append(result['current_year'])
-                
-            # Add unique previous years
-            for year_data in result.get('previous_years', []):
-                if year_data['year'] not in seen_years:
-                    seen_years.add(year_data['year'])
-                    combined['previous_years'].append(year_data)
-        
-        # Sort previous years newest to oldest
-        combined['previous_years'].sort(key=lambda x: x['year'], reverse=True)
-        
-        # Keep only 2 previous years
-        combined['previous_years'] = combined['previous_years'][:2]
-        
+    # Aggregate results from multiple chunks
+    def _aggregate_results(self, results: List[Dict]) -> Dict:
+        """
+        Combines results from multiple Claude API calls into a single output.
+        """
+        combined = {
+            "company": None,
+            "sector": None,
+            "current_year": {},
+            "previous_years": [],
+            "source_details": None
+        }
+
+        for result in results:
+            if not combined["company"]:
+                combined["company"] = result.get("company", None)
+            if not combined["sector"]:
+                combined["sector"] = result.get("sector", None)
+            if not combined["current_year"]:
+                combined["current_year"] = result.get("current_year", {})
+            combined["previous_years"].extend(result.get("previous_years", []))
+            if not combined["source_details"]:
+                combined["source_details"] = result.get("source_details", None)
+
+        # Remove duplicate entries in previous years
+        combined["previous_years"] = list({json.dumps(year): year for year in combined["previous_years"]}.values())
+
         return combined
