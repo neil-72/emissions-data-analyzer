@@ -1,58 +1,41 @@
-# Emissions Data Analyzer - Technical Documentation
+# Technical Documentation
 
-## Overview
+## Project Structure
 
-This tool extracts Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search for report discovery and Claude AI for data extraction.
+```
+emissions-data-analyzer/
+├── src/
+│   ├── analysis/           # Claude AI analysis
+│   │   ├── __init__.py
+│   │   └── claude_analyzer.py
+│   ├── extraction/         # PDF handling
+│   │   ├── __init__.py
+│   │   └── pdf_handler.py
+│   ├── isin/              # ISIN lookup
+│   │   ├── __init__.py
+│   │   └── isin_lookup.py
+│   ├── search/            # Report search
+│   │   ├── __init__.py
+│   │   └── brave_search.py
+│   └── web/               # Web interface
+│       ├── __init__.py
+│       ├── app.py
+│       ├── static/
+│       └── templates/
+├── tests/                 # Unit tests
+│   ├── __init__.py
+│   └── test_isin_lookup.py
+├── .env                   # API keys (not in repo)
+├── .env.example           # API key template
+├── .flaskenv             # Flask settings
+├── requirements.txt       # Dependencies
+└── README.md             # Project overview
+```
 
-## System Components
-
-### 1. Search Module (src/search/brave_search.py)
-- **Purpose**: Locate company sustainability reports via the Brave Search API
-- **Key Features**:
-  - Searches for sustainability reports, ESG reports, and CDP disclosures
-  - Implements multiple search strategies to improve result relevance
-  - ISIN lookup and validation for accurate company identification
-- **Main Class**: BraveSearchClient
-  - search_sustainability_report(): Finds the most relevant sustainability report
-
-### 2. Document Processing (src/extraction/pdf_handler.py)
-- **Purpose**: Extract text and structure from sustainability reports
-- **Key Features**:
-  - Handles PDFs with table recognition and text extraction
-  - Searches for keywords and patterns related to emissions
-  - Includes fallback methods for inaccessible documents
-- **Main Class**: DocumentHandler
-  - get_document_content(): Extracts structured text from PDF files
-  - extract_text_from_pdf(): Handles raw PDF processing
-
-### 3. Data Analysis (src/analysis/claude_analyzer.py)
-- **Purpose**: Extract emissions data from report text using Claude AI
-- **Key Features**:
-  - Targets specific keywords and contexts related to emissions
-  - Supports structured extraction of current and historical data
-  - Generates JSON-formatted output with source attribution
-- **Main Class**: EmissionsAnalyzer
-  - extract_emissions_data(): Main method for extracting emissions data
-
-### 4. Web Interface
-- **Purpose**: Provide REST API and user interface for data access
-- **Routes**:
-  1. **GET /**
-     - Serves the main web interface
-     - Template: `index.html`
-  2. **POST /analyze**
-     ```json
-     {
-       "identifier": "string",
-       "id_type": "company|isin"
-     }
-     ```
-  3. **GET /validate-isin/<isin>**
-     - Validates ISIN and returns company info
-
-## API Documentation
+## API Endpoints
 
 ### POST /analyze
+Analyze emissions data for a company.
 
 **Request:**
 ```json
@@ -67,7 +50,6 @@ This tool extracts Scope 1 and Scope 2 carbon emissions data from company sustai
 {
   "company": "Nvidia",
   "emissions_data": {
-    "company": "Nvidia",
     "current_year": {
       "scope_1": {
         "unit": "metric tons CO2e",
@@ -83,116 +65,199 @@ This tool extracts Scope 1 and Scope 2 carbon emissions data from company sustai
       },
       "year": 2024
     },
-    "previous_years": [
-      {
-        "scope_1": {
-          "unit": "metric tons CO2e",
-          "value": 12346
-        },
-        "scope_2_location_based": {
-          "unit": "metric tons CO2e",
-          "value": 142909
-        },
-        "scope_2_market_based": {
-          "unit": "metric tons CO2e",
-          "value": 60671
-        },
-        "year": 2023
-      }
-    ],
+    "previous_years": [...],
     "source_details": {
-      "context": "The emissions data was found in tables and text across multiple pages...",
+      "context": "Data extracted from sustainability report",
       "location": "Pages 29-32, 39-40"
     }
-  },
-  "processed_at": "2024-12-18T23:28:50.305280",
-  "report_url": "https://example.com/sustainability-report-2024.pdf",
-  "report_year": 2024
+  }
 }
 ```
 
-## Target Sections
+### GET /validate-isin/{isin}
+Validate ISIN and get company info.
 
-### Primary Sections
-The system looks for emissions data in the following report areas:
-- Greenhouse Gas Emissions
-- Climate Change Commitments
-- Environmental Data Tables
-- ESG Metrics and Performance
+**Success Response (200):**
+```json
+{
+  "valid": true,
+  "company_name": "Nvidia Corporation",
+  "sector": "Technology",
+  "country": "United States"
+}
+```
 
-### Table Indicators
-The system prioritizes tables containing:
-- "Scope 1" and "Scope 2" labels
-- Units like "tCO2e" or "MTCO2e"
-- Year-based columns adjacent to numeric data
+**Error Responses:**
+- 400: Invalid ISIN format
+- 404: Company not found
+
+## Core Components
+
+### 1. PDF Handler (src/extraction/pdf_handler.py)
+- Uses pdfplumber for text extraction
+- Table structure recognition
+- Error handling for corrupt PDFs
+
+Main method:
+```python
+def get_document_content(self, url: str) -> Optional[str]:
+    """Download and extract text from PDF"""
+```
+
+### 2. Claude Analyzer (src/analysis/claude_analyzer.py)
+- Processes text to find emissions data
+- Handles different report formats
+- Unit standardization
+
+Main method:
+```python
+def extract_emissions_data(self, text: str, company: str) -> Optional[Dict]:
+    """Extract emissions data using Claude"""
+```
+
+### 3. ISIN Lookup (src/isin/isin_lookup.py)
+- ISIN validation using Luhn algorithm
+- Company info from Yahoo Finance
+- Caching for performance
+
+Key methods:
+```python
+def validate_isin(self, isin: str) -> bool:
+    """Validate ISIN format and checksum"""
+
+def get_company_info(self, isin: str) -> Optional[Dict]:
+    """Get company details from ISIN"""
+```
+
+### 4. Brave Search (src/search/brave_search.py)
+- Finds sustainability reports
+- Handles API rate limits
+- Result filtering
+
+Main method:
+```python
+def search_sustainability_report(self, company: str) -> Optional[Dict]:
+    """Find latest sustainability report"""
+```
 
 ## Error Handling
 
-### PDF Access Issues
-1. Retries failed downloads with exponential backoff
-2. Attempts alternative URLs for inaccessible reports
-3. Logs failed attempts for further investigation
+1. **Input Validation**
+   - Company name required
+   - ISIN format validation
+   - PDF URL validation
 
-### Data Extraction Issues
-1. Extracts relevant sections when table parsing fails
-2. Ensures fallback strategies for unstructured data
-3. Uses multiple passes for improved accuracy
+2. **API Errors**
+   - Rate limit handling
+   - Connection timeouts
+   - Invalid responses
 
-### Common Error Codes
-1. **400 Bad Request**
-   - Missing required parameters
-   - Invalid ISIN format
-2. **404 Not Found**
-   - Company not found
-   - No sustainability report found
-3. **500 Internal Server Error**
-   - PDF processing errors
-   - Network errors
+3. **Processing Errors**
+   - PDF extraction failures
+   - Data not found
+   - Invalid unit formats
 
-## Known Limitations
-1. OCR is not implemented for scanned PDFs
-2. Sector identification relies on contextual data
-3. Assumes data is in metric tons CO2e
+## Dependencies
 
-## Running the Application
+Key packages:
+- anthropic: Claude AI API
+- pdfplumber: PDF processing
+- yfinance: Company lookups
+- Flask: Web interface
+- requests: HTTP client
+- pandas: Data handling
 
-### Development Mode
+## Environment Variables
+
 ```bash
-export FLASK_APP=src/web/app.py
-export FLASK_ENV=development
-flask run
+# Required
+CLAUDE_API_KEY=your_claude_api_key
+BRAVE_API_KEY=your_brave_api_key
+
+# Optional
+FLASK_ENV=development
+FLASK_DEBUG=1
 ```
 
-### Production Mode
+## Development
+
+### Running Tests
 ```bash
+# Install dev dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+python -m pytest
+```
+
+### Local Development
+```bash
+# Start Flask development server
+flask run --debug
+
+# Watch for file changes
+flask run --debug --reload
+```
+
+## Production Deployment
+
+```bash
+# Using gunicorn
 gunicorn -w 4 'src.web.app:app'
 ```
 
-## Maintenance
+Recommended settings:
+- 4+ worker processes
+- Rate limiting enabled
+- Error logging configured
+- HTTPS required
 
-### Regular Tasks
-1. Update search terms for evolving report formats
-2. Monitor API usage limits
-3. Test with new reports for compatibility
+## Data Processing
 
-### Performance Optimization
-1. **Caching**
-   - ISIN lookups cached
-   - PDF processing results cached
-2. **Rate Limiting**
-   - API requests throttled
-   - PDF downloads controlled
-3. **Memory Management**
-   - Large PDF handling
-   - Temporary file cleanup
+### Unit Conversions
+Supported input formats:
+- Metric tons (tonnes) CO2e
+- Short tons CO2e
+- Kilograms CO2e
+- Million metric tons CO2e
 
-### Security
-1. **API Key Management**
-   - Store keys in environment variables
-   - Regular key rotation
-2. **Input Validation**
-   - Sanitize all user inputs
-   - ISIN format strictly validated
-3. **Error Messages**
-   - Limited detail in production
-   - No sensitive data exposure
+### Report Sections
+Priority areas for data extraction:
+1. GHG Emissions tables
+2. Environmental Performance
+3. Climate Change sections
+4. ESG Metrics
+
+## Known Issues
+
+1. **PDF Processing**
+   - Some scanned PDFs unreadable
+   - Complex tables may break
+   - Large files slow to process
+
+2. **Data Extraction**
+   - Inconsistent unit formats
+   - Missing historical data
+   - Sector classification limited
+
+3. **API Limits**
+   - Brave Search rate limits
+   - Claude API costs
+   - Yahoo Finance timeouts
+
+## Future Improvements
+
+1. **Features**
+   - Scope 3 emissions support
+   - OCR for scanned PDFs
+   - Better sector analysis
+
+2. **Technical**
+   - Database caching
+   - Async processing
+   - PDF text cleaning
+
+3. **UI/UX**
+   - Better error messages
+   - Progress tracking
+   - Data comparisons
