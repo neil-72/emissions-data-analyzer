@@ -50,54 +50,70 @@ python -m src.main
 
 ## Output Format
 
+## Output Format
+
 ```json
 {
-  "company": "verizon",
-  "report_url": "https://www.verizon.com/about/sites/default/files/Verizon-2023-ESG-Report.pdf",
-  "report_year": 2023,
+  "company": "nvidia",
+  "report_url": "https://images.nvidia.com/aem-dam/Solutions/documents/FY2024-NVIDIA-Corporate-Sustainability-Report.pdf",
+  "report_year": 2024,
   "emissions_data": {
-    "company": "verizon",
+    "company": "nvidia",
     "sector": null,
     "current_year": {
-      "year": 2022,
+      "year": 2024,
       "scope_1": {
-        "value": 273904,
+        "value": 14390,
         "unit": "metric tons CO2e"
       },
       "scope_2_market_based": {
-        "value": 3075077,
+        "value": 40555,
         "unit": "metric tons CO2e"
       },
       "scope_2_location_based": {
-        "value": 3498643,
+        "value": 178087,
         "unit": "metric tons CO2e"
       }
     },
     "previous_years": [
       {
-        "year": 2021,
+        "year": 2023,
         "scope_1": {
-          "value": 310145,
+          "value": 12346,
           "unit": "metric tons CO2e"
         },
         "scope_2_market_based": {
-          "value": 3222342,
+          "value": 60671,
           "unit": "metric tons CO2e"
         },
         "scope_2_location_based": {
-          "value": 3554155,
+          "value": 142909,
+          "unit": "metric tons CO2e"
+        }
+      },
+      {
+        "year": 2022,
+        "scope_1": {
+          "value": 4612,
+          "unit": "metric tons CO2e"
+        },
+        "scope_2_market_based": {
+          "value": 78210,
+          "unit": "metric tons CO2e"
+        },
+        "scope_2_location_based": {
+          "value": 133569,
           "unit": "metric tons CO2e"
         }
       }
     ],
     "source_details": {
-      "location": "Pages 41-43",
-      "context": "The emissions data was found in tables and text on pages 41-43 of Verizon's 2023 ESG Report, under the 'Environment' section."
+      "location": "Pages 29-30",
+      "context": "The emissions data was found in tables on pages 29-30 of the sustainability report."
     }
   },
-  "processed_at": "2024-12-18T14:37:03.106467"
+  "processed_at": "xyz"
 }
-```
 
 ## Notes
 
