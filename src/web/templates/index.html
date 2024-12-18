@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emissions Data Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <nav class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex">
+                        <div class="flex-shrink-0 flex items-center">
+                            <h1 class="text-xl font-bold text-gray-800">Emissions Data Analyzer</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <!-- Search Form -->
+            <div class="bg-white shadow sm:rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <form id="searchForm" class="space-y-6">
+                        <div>
+                            <label for="identifier-type" class="block text-sm font-medium text-gray-700">Search By</label>
+                            <select id="identifier-type" name="identifier-type" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                                <option value="company">Company Name</option>
+                                <option value="isin">ISIN</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="identifier" class="block text-sm font-medium text-gray-700">Enter Company Name or ISIN</label>
+                            <input type="text" name="identifier" id="identifier" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Analyze Emissions Data
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="bg-white shadow sm:rounded-lg hidden">
+                <div class="px-4 py-5 sm:p-6">
+                    <h2 class="text-lg font-medium text-gray-900 mb-4">Analysis Results</h2>
+                    
+                    <!-- Filters -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Filter Data</label>
+                        <div class="flex space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" class="form-checkbox" name="filter-scope1" checked>
+                                <span class="ml-2">Scope 1</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" class="form-checkbox" name="filter-scope2" checked>
+                                <span class="ml-2">Scope 2</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Data Display -->
+                    <div id="data-display" class="rounded-lg border border-gray-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <pre id="json-display" class="p-4 text-sm text-gray-900 font-mono bg-gray-50"></pre>
+                        </div>
+                    </div>
+
+                    <!-- Download Button -->
+                    <div class="mt-4 flex justify-end">
+                        <button id="downloadBtn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            Download Results
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading" class="hidden">
+                <div class="flex justify-center items-center py-12">
+                    <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error" class="hidden bg-red-50 border-l-4 border-red-400 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-red-700" id="error-message"></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const identifier = document.getElementById('identifier').value;
+            const idType = document.getElementById('identifier-type').value;
+            
+            // Show loading, hide results and error
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+            
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        identifier: identifier,
+                        id_type: idType
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to analyze emissions data');
+                }
+                
+                // Update results display
+                document.getElementById('json-display').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('results').classList.remove('hidden');
+                
+            } catch (error) {
+                document.getElementById('error-message').textContent = error.message;
+                document.getElementById('error').classList.remove('hidden');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        });
+
+        // Filter checkbox handling
+        document.querySelectorAll('input[name^="filter-"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                const data = JSON.parse(document.getElementById('json-display').textContent);
+                const filtered = filterData(data);
+                document.getElementById('json-display').textContent = JSON.stringify(filtered, null, 2);
+            });
+        });
+
+        function filterData(data) {
+            const showScope1 = document.querySelector('input[name="filter-scope1"]').checked;
+            const showScope2 = document.querySelector('input[name="filter-scope2"]').checked;
+            
+            const filtered = {...data};
+            
+            if (!showScope1) {
+                delete filtered.emissions_data.scope_1;
+            }
+            if (!showScope2) {
+                delete filtered.emissions_data.scope_2;
+                delete filtered.emissions_data.scope_2_market_based;
+                delete filtered.emissions_data.scope_2_location_based;
+            }
+            
+            return filtered;
+        }
+
+        // Download button handling
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const data = document.getElementById('json-display').textContent;
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'emissions_data.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
