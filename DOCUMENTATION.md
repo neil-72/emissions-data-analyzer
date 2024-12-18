@@ -5,21 +5,24 @@
 The application consists of several key components:
 
 1. **Data Collection Layer**
-   - `BraveSearchClient`: Handles sustainability report search
-   - `DocumentHandler`: Processes PDF documents
+   - `BraveSearchClient`: Handles API-based sustainability report search
+   - `ISINLookup`: Manages ISIN to company name resolution
+   - `DocumentHandler`: Processes PDF documents and text extraction
 
 2. **Analysis Layer**
    - `EmissionsAnalyzer`: Extracts and processes emissions data
    - Data validation and normalization
+   - Unit conversion handling
 
 3. **Web Interface**
    - Flask application with RESTful endpoints
+   - Real-time validation and preview
    - Interactive data display
    - Download functionality
 
 ## Component Details
 
-### Web Interface (src/web/)
+### Web Interface
 
 #### Routes
 
@@ -32,21 +35,47 @@ The application consists of several key components:
    - Parameters:
      ```json
      {
-       "identifier": "company_name"
+       "identifier": "string",
+       "id_type": "company|isin"
      }
      ```
-   - Returns analyzed emissions data
 
-### API Documentation
+3. **GET /validate-isin/<isin>**
+   - Validates ISIN and returns company info
+   - Returns:
+     ```json
+     {
+       "valid": boolean,
+       "company_name": "string",
+       "error": "string"
+     }
+     ```
 
-#### POST /analyze
+### ISIN Lookup
 
-Analyze emissions data for a specified company.
+The `ISINLookup` class provides:
+1. ISIN format validation
+2. Company name resolution via Yahoo Finance
+3. Caching for performance
+4. Error handling and reporting
 
-**Request Format:**
+#### Validation Rules
+- 12 characters long
+- First 2 characters are letters (country code)
+- Remaining 10 characters are alphanumeric
+- Valid checksum using Luhn algorithm
+
+## API Documentation
+
+### POST /analyze
+
+Analyze emissions data for a company.
+
+**Request:**
 ```json
 {
-  "identifier": "company_name"
+  "identifier": "string",
+  "id_type": "company|isin"
 }
 ```
 
@@ -99,15 +128,35 @@ Analyze emissions data for a specified company.
 }
 ```
 
-**Error Responses:**
+### GET /validate-isin/{isin}
+
+Validate ISIN and get company information.
+
+**Parameters:**
+- `isin`: ISIN to validate (path parameter)
+
+**Response:**
+```json
+{
+  "valid": boolean,
+  "company_name": "string",
+  "error": "string"
+}
+```
+
+## Error Handling
+
+### Common Error Codes
 
 1. **400 Bad Request**
-   - Missing or invalid company name
+   - Missing required parameters
+   - Invalid ISIN format
    ```json
-   {"error": "Company name required"}
+   {"error": "Invalid ISIN format"}
    ```
 
 2. **404 Not Found**
+   - Company not found
    - No sustainability report found
    - No emissions data found
    ```json
@@ -122,54 +171,59 @@ Analyze emissions data for a specified company.
    {"error": "Error processing PDF document"}
    ```
 
-### Data Processing
+## Running the Application
 
-#### Unit Handling
-1. Automatic detection of input units
-2. Conversion to metric tons CO2e
-3. Validation of unit consistency
+### Development Mode
+```bash
+# Set environment variables
+export FLASK_APP=src/web/app.py
+export FLASK_ENV=development
 
-#### Data Structure
-
-The emissions data structure includes:
-- Current year emissions (Scope 1, Scope 2)
-- Historical emissions data when available
-- Source document details and context
-- Unit standardization to metric tons CO2e
-- Timestamps and processing metadata
-
-## Error Handling
-
-### Common Error Scenarios
-
-1. **PDF Processing**
-   - Non-readable PDFs
-   - Complex table layouts
-   - Missing or corrupt files
-
-2. **API Issues**
-   - Rate limits
-   - Authentication failures
-   - Network timeouts
-
-3. **Data Validation**
-   - Invalid units
-   - Out of range values
-   - Inconsistent data
-
-### Error Logging
-
-```python
-# Example error handling
-try:
-    result = process_document(url)
-except PDFProcessingError as e:
-    logger.error(f"PDF processing failed: {str(e)}")
-    raise HTTPException(status_code=500)
-except ValidationError as e:
-    logger.warning(f"Data validation failed: {str(e)}")
-    raise HTTPException(status_code=400)
+# Run Flask
+flask run
 ```
+
+### Production Mode
+```bash
+# Using gunicorn
+gunicorn -w 4 'src.web.app:app'
+```
+
+## Testing
+
+### Unit Tests
+Run unit tests with:
+```bash
+python -m pytest tests/
+```
+
+### Sample Test Cases
+1. ISIN Validation
+   - Valid ISIN: US0378331005 (Apple Inc)
+   - Invalid format: ABC123
+   - Invalid checksum: US0378331004
+
+2. Emissions Data
+   - Complete data (all scopes)
+   - Historical data validation
+   - Source attribution verification
+
+## Performance Optimization
+
+1. **Caching**
+   - ISIN lookups cached
+   - PDF processing results cached
+   - API responses cached where appropriate
+
+2. **Rate Limiting**
+   - API requests throttled
+   - ISIN validation rate limited
+   - PDF downloads controlled
+
+3. **Memory Management**
+   - Large PDF handling
+   - Temporary file cleanup
+   - Cache size limits
 
 ## Security Considerations
 
@@ -180,27 +234,27 @@ except ValidationError as e:
 
 2. **Input Validation**
    - Sanitize all user inputs
-   - Validate URLs before processing
-   - Restrict file types and sizes
+   - ISIN format strictly validated
+   - URL parameters checked
 
 3. **Error Messages**
-   - Generic errors in production
-   - Detailed logging for debugging
-   - No sensitive data in responses
+   - Limited detail in production
+   - No sensitive data exposure
+   - Logging properly configured
 
-## Performance Optimization
+## Maintenance
 
-1. **Memory Management**
-   - Stream large PDFs
-   - Clean up temporary files
-   - Implement caching
+1. **Logging**
+   - Application events logged
+   - Error tracking
+   - Performance monitoring
 
-2. **Request Handling**
-   - Rate limiting
-   - Response caching
-   - Asynchronous processing
+2. **Monitoring**
+   - API endpoint health
+   - Cache performance
+   - Error rates
 
-3. **API Usage**
-   - Batch requests where possible
-   - Cache API responses
-   - Implement retries with backoff
+3. **Updates**
+   - Dependency management
+   - Security patches
+   - Feature updates
