@@ -41,78 +41,71 @@ BRAVE_API_KEY=your_brave_api_key
 python -m src.main
 ```
 
-## Data Extraction Process
+## How it Works
 
-1. Preprocessing:
-   - Extracts lines around relevant keywords (Scope 1 or Scope 2) with configurable context (default: 15 lines above and below)
-   - Saves processed text to claude_input_data.txt for verification
-
-2. Analysis:
-   - Breaks down long text into manageable chunks (30,000 characters)
-   - Sends each chunk to Claude for extracting emissions data
-
-3. Output:
-   - Aggregates results into a single JSON file in the output directory
+1. The tool searches for a company's latest sustainability report using Brave Search
+2. It downloads and processes the PDF, extracting text content
+3. Relevant sections about emissions are identified and sent to Claude for analysis
+4. Results are aggregated and saved in JSON format
 
 ## Output Format
 
 ```json
 {
-    "company": "Company Name",
-    "report_url": "URL to sustainability report",
-    "report_year": 2024,
-    "emissions_data": {
-        "current_year": {
-            "year": 2023,
-            "scope_1": {
-                "value": 144960,
-                "unit": "metric tons CO2e",
-                "measurement": "market-based"
-            },
-            "scope_2_market_based": {
-                "value": 393134,
-                "unit": "metric tons CO2e"
-            },
-            "scope_2_location_based": {
-                "value": 6381250,
-                "unit": "metric tons CO2e"
-            }
-        },
-        "previous_years": [
-            {
-                "year": 2022,
-                "scope_1": {
-                    "value": 139413,
-                    "unit": "metric tons CO2e"
-                },
-                "scope_2_market_based": {
-                    "value": 288029,
-                    "unit": "metric tons CO2e"
-                },
-                "scope_2_location_based": {
-                    "value": 6381250,
-                    "unit": "metric tons CO2e"
-                }
-            }
-        ],
-        "source_details": {
-            "location": "Page 25",
-            "context": "The emissions data was found in the environmental metrics section."
-        }
+  "company": "Company Name",
+  "sector": "Industry Sector or null",
+  "current_year": {
+    "year": 2023,
+    "scope_1": {
+      "value": 144960,
+      "unit": "metric tons CO2e"
+    },
+    "scope_2_market_based": {
+      "value": 393134,
+      "unit": "metric tons CO2e"
+    },
+    "scope_2_location_based": {
+      "value": 6381250,
+      "unit": "metric tons CO2e"
     }
+  },
+  "previous_years": [
+    {
+      "year": 2022,
+      "scope_1": {
+        "value": 139413,
+        "unit": "metric tons CO2e"
+      },
+      "scope_2_market_based": {
+        "value": 288029,
+        "unit": "metric tons CO2e"
+      },
+      "scope_2_location_based": {
+        "value": 6381250,
+        "unit": "metric tons CO2e"
+      }
+    }
+  ],
+  "source_details": {
+    "location": "Page 25",
+    "context": "Found in Environmental Metrics section"
+  },
+  "processed_at": "2024-12-18T10:30:00Z"
 }
 ```
 
 ## Notes
 
-1. Does not convert units automatically; the tool assumes values are in metric tons CO2e
-2. Sector identification is derived using keywords or left as null if insufficient information is present
-3. The tool works only with official sustainability reports in PDF format
+1. The tool assumes all emissions values are in metric tons CO2e
+2. Sector identification is based on report context and may be null if unclear
+3. Both market-based and location-based Scope 2 emissions are captured when available
+4. Historical data for up to 2 previous years is included when found
 
 ## Limitations
 
-- Requires valid API keys for Brave Search and Claude
-- Text extraction depends on report formatting and may miss complex tabular data
-- Sector identification may not always be accurate and relies on report context
+- Requires valid API keys for both Brave Search and Claude
+- Works best with PDFs that have machine-readable text
+- May miss data in complex tables or images
+- Accuracy depends on the clarity and structure of the source report
 
 See DOCUMENTATION.md for technical details.
