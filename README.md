@@ -1,112 +1,151 @@
 # Emissions Data Analyzer
 
-Extract and analyze carbon emissions data from company sustainability reports automatically. This tool uses AI to find and process Scope 1 and Scope 2 emissions data from company sustainability reports.
+A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
 
-## 🚀 Quick Start
+## Key Features
 
-```bash
-# Clone and enter the repository
-git clone https://github.com/neil-72/emissions-data-analyzer.git
-cd emissions-data-analyzer
+1. Smart detection and extraction of emissions data using Claude AI
+2. Data extraction from sustainability reports (PDFs)
+3. Automatic unit conversion to metric tons CO2e
+4. Web interface for easy access and data visualization
+5. Historical data tracking and comparison
 
-# Set up Python virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
+## Installation Guide
 
-# Install dependencies
-pip install -r requirements.txt
+### Prerequisites
+- Python 3.8 or higher
+- Git
+- Text editor of your choice
+- Brave Search API key (get from [Brave API Portal](https://brave.com/search/api/))
+- Claude API key (get from [Anthropic Console](https://console.anthropic.com/))
 
-# Set up your .env file (IMPORTANT!)
-cp .env.example .env
-# Edit .env with your API keys from Brave and Anthropic
+### Step-by-Step Installation
 
-# Start the web interface
-flask run
-```
-
-Then open http://localhost:5000 in your browser!
-
-## 🔑 Before You Start: Get API Keys
-
-You'll need two API keys:
-
-1. **Brave Search API Key**
-   - Go to [Brave API Portal](https://brave.com/search/api/)
-   - Sign up and create an API key
-   - Free tier available
-
-2. **Claude API Key**
-   - Go to [Anthropic Console](https://console.anthropic.com/)
-   - Sign up and create an API key
-   - Credit card required
-
-## 📋 Common Issues & Solutions
-
-1. **"Could not import 'app'"**
+1. **Clone the Repository**
    ```bash
-   # Make sure you're in the project root directory, not src/web
-   cd emissions-data-analyzer  # Go to root directory
+   git clone https://github.com/neil-72/emissions-data-analyzer.git
+   cd emissions-data-analyzer
+   ```
+
+2. **Set Up Virtual Environment**
+   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   # On macOS/Linux:
+   source venv/bin/activate
+   # On Windows:
+   .\venv\Scripts\activate
+   ```
+
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure Environment Variables**
+
+   Create a .env file in the project root:
+   ```bash
+   CLAUDE_API_KEY=your_claude_api_key
+   BRAVE_API_KEY=your_brave_api_key
+   ```
+
+## Usage
+
+### Web Interface
+
+1. Start the Flask server:
+   ```bash
+   cd src/web
    flask run
    ```
 
-2. **Import errors**
-   ```bash
-   # Create these empty files:
-   touch src/__init__.py
-   touch src/web/__init__.py
-   touch src/search/__init__.py
-   touch src/analysis/__init__.py
-   touch src/extraction/__init__.py
-   ```
+2. Open http://localhost:5000 in your browser
+3. Enter a company name
+4. View and download the results
 
-3. **Environment variables not found**
-   - Create a `.env` file in the root directory
-   - Copy the format from `.env.example`
-   - Never commit your actual API keys to Git
+### Command Line Interface
 
-## 💻 Using the Tool
-
-1. **Web Interface** (Recommended)
-   ```bash
-   flask run
-   # Open http://localhost:5000
-   # Enter company name and click Analyze
-   ```
-
-2. **Command Line**
+1. Run the main script:
    ```bash
    python -m src.main
-   # Follow the prompts
    ```
 
-## 📊 Sample Output
+2. Enter company names when prompted
+3. Results will be saved to JSON files
+
+## Sample Output
 
 ```json
 {
-  "company": "example_company",
-  "report_url": "https://example.com/sustainability-report-2024.pdf",
-  "report_year": 2024,
+  "company": "Nvidia",
   "emissions_data": {
-    "scope_1": {
-      "value": 14390,
-      "unit": "metric tons CO2e"
+    "company": "Nvidia",
+    "current_year": {
+      "scope_1": {
+        "unit": "metric tons CO2e",
+        "value": 14390
+      },
+      "scope_2_location_based": {
+        "unit": "metric tons CO2e",
+        "value": 178087
+      },
+      "scope_2_market_based": {
+        "unit": "metric tons CO2e",
+        "value": 40555
+      },
+      "year": 2024
     },
-    "scope_2_market_based": {
-      "value": 40555,
-      "unit": "metric tons CO2e"
+    "previous_years": [
+      {
+        "scope_1": {
+          "unit": "metric tons CO2e",
+          "value": 12346
+        },
+        "scope_2_location_based": {
+          "unit": "metric tons CO2e",
+          "value": 142909
+        },
+        "scope_2_market_based": {
+          "unit": "metric tons CO2e",
+          "value": 60671
+        },
+        "year": 2023
+      }
+    ],
+    "source_details": {
+      "context": "The emissions data was found in tables and text across multiple pages of Nvidia's sustainability report",
+      "location": "Pages 29-32, 39-40"
     }
-  }
+  },
+  "processed_at": "2024-12-18T23:28:50.305280",
+  "report_url": "https://example.com/sustainability-report-2024.pdf",
+  "report_year": 2024
 }
 ```
 
-## 📚 More Information
+## Features
 
-- [Technical Documentation](DOCUMENTATION.md) - Detailed technical guide
-- [Issue Tracker](https://github.com/neil-72/emissions-data-analyzer/issues) - Report bugs or request features
+- Historical Data: Tracks and compares emissions data across multiple years
+- Source Attribution: Provides detailed information about where data was found
+- Multiple Metrics: Captures both location-based and market-based Scope 2 emissions
+- Automatic Unit Conversion: All values standardized to metric tons CO2e
 
-## ⚠️ Important Notes
+## Notes
 
-- The tool works best with PDFs that have machine-readable text
-- All data is converted to metric tons CO2e automatically
-- Processes both market-based and location-based Scope 2 emissions
-- Network access is required for API calls and PDF downloads
+1. The tool intelligently converts various unit formats to metric tons CO2e
+2. Both market-based and location-based Scope 2 emissions are captured when available
+3. Historical data is included when found in reports
+4. Source details preserve the exact location and context of the data
+
+## Limitations
+
+* Requires valid API keys for both Brave Search and Claude
+* Works best with PDFs that have machine-readable text
+* May need assistance with complex table layouts
+* Accuracy depends on the clarity of the source report
+* Network access required for API calls and PDF downloads
+
+See DOCUMENTATION.md for technical details.
