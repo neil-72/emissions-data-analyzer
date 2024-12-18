@@ -8,8 +8,6 @@ from ..config import (
     MAX_RESULTS_PER_SEARCH
 )
 from ..extraction.pdf_handler import DocumentHandler
-from .analysis.claude_analyzer import EmissionsAnalyzer
-from .config import DEFAULT_OUTPUT_DIR
 
 class EmissionsTracker:
     """# Main class for tracking and analyzing company emissions data
