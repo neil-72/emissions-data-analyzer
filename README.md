@@ -1,88 +1,50 @@
 # Emissions Data Analyzer
 
-A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
+Extract and analyze Scope 1 and Scope 2 carbon emissions data from company sustainability reports. Uses AI to find and process emissions data from publicly available reports, with support for company name or ISIN lookup.
 
-## Key Features
+## What It Does
 
-1. Smart detection and extraction of emissions data using Claude AI
-2. Data extraction from sustainability reports (PDFs)
-3. Automatic unit conversion to metric tons CO2e
-4. Web interface for easy access and data visualization
-5. Historical data tracking and comparison
+- 🔍 **Find Reports**: Automatically finds latest sustainability reports using Brave Search
+- 📊 **Extract Data**: Uses Claude AI to extract Scope 1 and Scope 2 emissions data
+- 🏢 **Company Lookup**: Search by company name or ISIN (International Securities Identification Number)
+- 📈 **Historical Data**: Captures historical emissions data when available
+- 🔄 **Unit Conversion**: Automatically converts to metric tons CO2e
 
-## Installation Guide
+## Prerequisites
 
-### Prerequisites
-- Python 3.8 or higher
-- Git
-- Text editor of your choice
-- Brave Search API key (get from [Brave API Portal](https://brave.com/search/api/))
-- Claude API key (get from [Anthropic Console](https://console.anthropic.com/))
+- Python 3.8+
+- [Brave Search API key](https://brave.com/search/api/)
+- [Claude API key](https://console.anthropic.com/)
 
-### Step-by-Step Installation
+## Quick Start
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/neil-72/emissions-data-analyzer.git
-   cd emissions-data-analyzer
-   ```
+1. **Clone & Setup**
+```bash
+git clone https://github.com/neil-72/emissions-data-analyzer.git
+cd emissions-data-analyzer
+python -m venv venv
+source venv/bin/activate  # Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-2. **Set Up Virtual Environment**
-   ```bash
-   # Create virtual environment
-   python3 -m venv venv
-   
-   # Activate virtual environment
-   # On macOS/Linux:
-   source venv/bin/activate
-   # On Windows:
-   .\venv\Scripts\activate
-   ```
+2. **Configure**
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
 
-3. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+3. **Run**
+```bash
+flask run
+# Open http://localhost:5000
+```
 
-4. **Configure Environment Variables**
-
-   Create a .env file in the project root:
-   ```bash
-   CLAUDE_API_KEY=your_claude_api_key
-   BRAVE_API_KEY=your_brave_api_key
-   ```
-
-## Usage
-
-### Web Interface
-
-1. Start the Flask server:
-   ```bash
-   cd src/web
-   flask run
-   ```
-
-2. Open http://localhost:5000 in your browser
-3. Enter a company name
-4. View and download the results
-
-### Command Line Interface
-
-1. Run the main script:
-   ```bash
-   python -m src.main
-   ```
-
-2. Enter company names when prompted
-3. Results will be saved to JSON files
-
-## Sample Output
+## Example Output
 
 ```json
 {
   "company": "Nvidia",
   "emissions_data": {
-    "company": "Nvidia",
     "current_year": {
       "scope_1": {
         "unit": "metric tons CO2e",
@@ -116,36 +78,64 @@ A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from c
       }
     ],
     "source_details": {
-      "context": "The emissions data was found in tables and text across multiple pages of Nvidia's sustainability report",
+      "context": "Data extracted from sustainability report",
       "location": "Pages 29-32, 39-40"
     }
-  },
-  "processed_at": "2024-12-18T23:28:50.305280",
-  "report_url": "https://example.com/sustainability-report-2024.pdf",
-  "report_year": 2024
+  }
 }
 ```
 
-## Features
+## Main Components
 
-- Historical Data: Tracks and compares emissions data across multiple years
-- Source Attribution: Provides detailed information about where data was found
-- Multiple Metrics: Captures both location-based and market-based Scope 2 emissions
-- Automatic Unit Conversion: All values standardized to metric tons CO2e
+### 1. Search (src/search/brave_search.py)
+- Uses Brave Search API to find sustainability reports
+- Filters for PDFs and relevant documents
+- Handles rate limiting and retries
 
-## Notes
+### 2. PDF Processing (src/extraction/pdf_handler.py)
+- Extracts text and tables from PDFs
+- Handles different document formats
+- Preserves document structure
 
-1. The tool intelligently converts various unit formats to metric tons CO2e
-2. Both market-based and location-based Scope 2 emissions are captured when available
-3. Historical data is included when found in reports
-4. Source details preserve the exact location and context of the data
+### 3. Analysis (src/analysis/claude_analyzer.py)
+- Uses Claude AI to find emissions data
+- Extracts both current and historical data
+- Validates and standardizes units
 
-## Limitations
+### 4. ISIN Support (src/isin/isin_lookup.py)
+- Validates ISIN format using Luhn algorithm
+- Looks up company info via Yahoo Finance
+- Real-time validation in web interface
 
-* Requires valid API keys for both Brave Search and Claude
-* Works best with PDFs that have machine-readable text
-* May need assistance with complex table layouts
-* Accuracy depends on the clarity of the source report
-* Network access required for API calls and PDF downloads
+## Web Interface
 
-See DOCUMENTATION.md for technical details.
+- Simple search by company name or ISIN
+- Real-time ISIN validation
+- Visual charts for emissions data
+- Historical data tracking
+- Download results as JSON
+
+## Known Limitations
+
+- Only processes publicly available reports
+- Best with machine-readable PDFs
+- Rate limits on API usage
+- Some scanned PDFs may not work
+
+## Testing
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific test file
+python -m pytest tests/test_isin_lookup.py
+```
+
+## License
+
+MIT License - see LICENSE file
+
+## Contributing
+
+Contributions welcome! Please check our issues page.
