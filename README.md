@@ -3,11 +3,12 @@
 A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
 
 ## Key Features
-	1.	Extracts relevant sections of reports based on keywords like “Scope 1” and “Scope 2” and sends context-rich chunks to Claude for analysis.
-	2.	Removes duplicate lines for cleaner data processing.
-	3.	Outputs extracted data in JSON format with details on emissions values, years, and context.
-	4.	Saves intermediate files (claude_input_data.txt) for inspection of processed text.
-	5.	Validates and aggregates results across multiple chunks of text.
+
+1. Extracts relevant sections of reports based on keywords like "Scope 1" and "Scope 2" and sends context-rich chunks to Claude for analysis
+2. Removes duplicate lines for cleaner data processing
+3. Outputs extracted data in JSON format with details on emissions values, years, and context
+4. Saves intermediate files (claude_input_data.txt) for inspection of processed text
+5. Validates and aggregates results across multiple chunks of text
 
 ## Setup
 
@@ -28,7 +29,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables
+4. Set up environment variables:
 Create a .env file:
 ```env
 CLAUDE_API_KEY=your_claude_api_key
@@ -40,18 +41,22 @@ BRAVE_API_KEY=your_brave_api_key
 python -m src.main
 ```
 
-Data Extraction Process
-	1.	Preprocessing:
-	•	Extracts lines around relevant keywords (Scope 1 or Scope 2) with configurable context (default: 15 lines above and below).
-	•	Saves processed text to claude_input_data.txt for verification.
-	2.	Analysis:
-	•	Breaks down long text into manageable chunks (30,000 characters).
-	•	Sends each chunk to Claude for extracting emissions data.
-	3.	Output:
-	•	Aggregates results into a single JSON file in the output directory.
+## Data Extraction Process
 
-Output Format
+1. Preprocessing:
+   - Extracts lines around relevant keywords (Scope 1 or Scope 2) with configurable context (default: 15 lines above and below)
+   - Saves processed text to claude_input_data.txt for verification
 
+2. Analysis:
+   - Breaks down long text into manageable chunks (30,000 characters)
+   - Sends each chunk to Claude for extracting emissions data
+
+3. Output:
+   - Aggregates results into a single JSON file in the output directory
+
+## Output Format
+
+```json
 {
     "company": "Company Name",
     "report_url": "URL to sustainability report",
@@ -95,18 +100,19 @@ Output Format
             "context": "The emissions data was found in the environmental metrics section."
         }
     }
-}Notes
-	1.	Does not convert units automatically; the tool assumes values are in metric tons CO2e.
-	2.	Sector identification is derived using keywords or left as null if insufficient information is present.
-	3.	The tool works only with official sustainability reports in PDF format.
+}
+```
 
-Limitations
-	•	Requires valid API keys for Brave Search and Claude.
-	•	Text extraction depends on report formatting and may miss complex tabular data.
-	•	Sector identification may not always be accurate and relies on report context.
+## Notes
+
+1. Does not convert units automatically; the tool assumes values are in metric tons CO2e
+2. Sector identification is derived using keywords or left as null if insufficient information is present
+3. The tool works only with official sustainability reports in PDF format
+
+## Limitations
+
+- Requires valid API keys for Brave Search and Claude
+- Text extraction depends on report formatting and may miss complex tabular data
+- Sector identification may not always be accurate and relies on report context
 
 See DOCUMENTATION.md for technical details.
-
-
-
-
