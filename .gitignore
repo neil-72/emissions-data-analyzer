@@ -36,3 +36,6 @@ ENV/
 
 # Project specific
 output/
+cache/
+logs/
+*.log
