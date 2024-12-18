@@ -52,54 +52,59 @@ python -m src.main
 
 ```json
 {
-  "company": "Company Name",
-  "sector": "Industry Sector or null",
-  "current_year": {
-    "year": 2023,
-    "scope_1": {
-      "value": 144960,
-      "unit": "metric tons CO2e"
-    },
-    "scope_2_market_based": {
-      "value": 393134,
-      "unit": "metric tons CO2e"
-    },
-    "scope_2_location_based": {
-      "value": 6381250,
-      "unit": "metric tons CO2e"
-    }
-  },
-  "previous_years": [
-    {
+  "company": "verizon",
+  "report_url": "https://www.verizon.com/about/sites/default/files/Verizon-2023-ESG-Report.pdf",
+  "report_year": 2023,
+  "emissions_data": {
+    "company": "verizon",
+    "sector": null,
+    "current_year": {
       "year": 2022,
       "scope_1": {
-        "value": 139413,
+        "value": 273904,
         "unit": "metric tons CO2e"
       },
       "scope_2_market_based": {
-        "value": 288029,
+        "value": 3075077,
         "unit": "metric tons CO2e"
       },
       "scope_2_location_based": {
-        "value": 6381250,
+        "value": 3498643,
         "unit": "metric tons CO2e"
       }
+    },
+    "previous_years": [
+      {
+        "year": 2021,
+        "scope_1": {
+          "value": 310145,
+          "unit": "metric tons CO2e"
+        },
+        "scope_2_market_based": {
+          "value": 3222342,
+          "unit": "metric tons CO2e"
+        },
+        "scope_2_location_based": {
+          "value": 3554155,
+          "unit": "metric tons CO2e"
+        }
+      }
+    ],
+    "source_details": {
+      "location": "Pages 41-43",
+      "context": "The emissions data was found in tables and text on pages 41-43 of Verizon's 2023 ESG Report, under the 'Environment' section."
     }
-  ],
-  "source_details": {
-    "location": "Page 25",
-    "context": "Found in Environmental Metrics section"
   },
-  "processed_at": "2024-12-18T10:30:00Z"
+  "processed_at": "2024-12-18T14:37:03.106467"
 }
 ```
 
 ## Notes
 
 1. The tool assumes all emissions values are in metric tons CO2e
-2. Sector identification is based on report context and may be null if unclear
-3. Both market-based and location-based Scope 2 emissions are captured when available
-4. Historical data for up to 2 previous years is included when found
+2. Both market-based and location-based Scope 2 emissions are captured when available 
+3. Historical data for up to two previous years is included when found
+4. Source details provide page numbers and context where data was found
 
 ## Limitations
 
