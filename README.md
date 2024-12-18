@@ -4,11 +4,12 @@ A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from c
 
 ## Key Features
 
-1. Extracts relevant sections of reports based on keywords like "Scope 1" and "Scope 2" and sends context-rich chunks to Claude for analysis
-2. Removes duplicate lines for cleaner data processing
-3. Outputs extracted data in JSON format with details on emissions values, years, and context
-4. Saves intermediate files (claude_input_data.txt) for inspection of processed text 
-5. Validates and aggregates results across multiple chunks of text
+1. Smart detection and extraction of emissions data from sustainability reports using Claude AI
+2. Intelligent context preservation around emissions data
+3. Automatic unit conversion to metric tons CO2e
+4. Multi-year data tracking with both current and historical emissions
+5. Detailed source context preservation
+6. Automatic validation and deduplication of results
 
 ## Installation Guide
 
@@ -64,8 +65,7 @@ A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from c
    echo CLAUDE_API_KEY=your_claude_api_key > .env
    echo BRAVE_API_KEY=your_brave_api_key >> .env
    
-   # Method 3: Manually create .env in your text editor
-   # Add these lines:
+   # Method 3: Manually create .env in your text editor with:
    CLAUDE_API_KEY=your_claude_api_key
    BRAVE_API_KEY=your_brave_api_key
    ```
@@ -116,21 +116,41 @@ A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from c
 ## How it Works
 
 1. The tool searches for a company's latest sustainability report using Brave Search
-2. It downloads and processes the PDF, extracting text content
-3. Relevant sections about emissions are identified and sent to Claude for analysis
-4. Results are aggregated and saved in JSON format
+2. It downloads and processes the PDF, extracting text content while preserving structure
+3. Relevant sections about emissions are identified with surrounding context
+4. Claude AI analyzes the text to extract and normalize emissions data
+5. Results are validated, aggregated, and saved in JSON format
+
+## Data Processing Features
+
+1. **Unit Handling**
+   - Automatic unit detection and conversion to metric tons CO2e using Claude AI
+   - Built-in conversion logic framework for additional unit handling
+   - Validation of unit consistency across data points
+
+2. **Data Validation**
+   - Duplicate removal and data aggregation
+   - Consistency checks across years
+   - Source context preservation
+   - Structured data validation
+
+3. **Emissions Coverage**
+   - Complete Scope 1 emissions data
+   - Both market-based and location-based Scope 2 emissions
+   - Historical data tracking for trend analysis
+   - Detailed source documentation
 
 ## Output Format
 
-Example output when analyzing NVIDIA's sustainability report:
+Example output when analyzing a sustainability report:
 
 ```json
 {
-  "company": "nvidia",
-  "report_url": "https://images.nvidia.com/aem-dam/Solutions/documents/FY2024-NVIDIA-Corporate-Sustainability-Report.pdf",
+  "company": "example_company",
+  "report_url": "https://example.com/sustainability-report-2024.pdf",
   "report_year": 2024,
   "emissions_data": {
-    "company": "nvidia",
+    "company": "example_company",
     "sector": null,
     "current_year": {
       "year": 2024,
@@ -166,7 +186,7 @@ Example output when analyzing NVIDIA's sustainability report:
     ],
     "source_details": {
       "location": "Pages 29-30",
-      "context": "The emissions data was found in tables on pages 29-30 of the sustainability report."
+      "context": "Data extracted from environmental performance tables"
     }
   },
   "processed_at": "2024-12-18T14:50:26.282104"
@@ -175,16 +195,17 @@ Example output when analyzing NVIDIA's sustainability report:
 
 ## Notes
 
-1. The tool assumes all emissions values are in metric tons CO2e
+1. The tool uses Claude AI to intelligently convert various unit formats to metric tons CO2e
 2. Both market-based and location-based Scope 2 emissions are captured when available
-3. Historical data for up to two previous years is included when found
-4. Source details provide page numbers and context where data was found
+3. Historical data for previous years is included when found
+4. Source details preserve the exact location and context of the data
 
 ## Limitations
 
 * Requires valid API keys for both Brave Search and Claude
 * Works best with PDFs that have machine-readable text
-* May miss data in complex tables or images
+* May need assistance with complex table layouts or non-standard units
 * Accuracy depends on the clarity and structure of the source report
+* Network access required for API calls and PDF downloads
 
 See DOCUMENTATION.md for technical details.
