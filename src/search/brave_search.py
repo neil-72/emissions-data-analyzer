@@ -25,7 +25,6 @@ class BraveSearchClient:
         # Add basic negative patterns to filter obvious non-reports
         self.negative_patterns = [
             'proxy statement',
-            'annual report',
             '10-k',
             '10k',
             'financial results'
