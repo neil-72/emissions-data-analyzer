@@ -1,31 +1,32 @@
 import os
-from dotenv import load_dotenv
-import logging
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Base directories
+BASE_DIR = Path(__file__).parent.parent
+DEFAULT_OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Create output directory if it doesn't exist
+os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
 
-# API Keys
-CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+# API Settings
 BRAVE_API_KEY = os.getenv('BRAVE_API_KEY')
+CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
-if not CLAUDE_API_KEY or not BRAVE_API_KEY:
-    raise ValueError("Missing required API keys in .env file")
+# Logging settings
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
-# Search Configuration
-SEARCH_YEARS = [2024, 2023, 2022]  # Years to search for reports
-MAX_RESULTS_PER_SEARCH = 3
+# Rate limiting
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # seconds
 
-# Document Processing
-MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB limit
-VALID_DOCUMENT_TYPES = ['.pdf', '.html', '.htm']
+# Cache settings
+CACHE_DIR = os.path.join(BASE_DIR, 'cache')
+os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Output Configuration
-DEFAULT_OUTPUT_DIR = 'output'
+# PDF Processing
+MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB
+PDF_TIMEOUT = 30  # seconds
+
+# Search settings
+SEARCH_RESULTS_LIMIT = 5
+MAX_REPORT_AGE_YEARS = 2
