@@ -3,9 +3,7 @@ import json
 import logging
 from typing import Dict, Optional, List
 from anthropic import Anthropic
-from termcolor import colored
 from ..config import CLAUDE_API_KEY
-
 
 class EmissionsAnalyzer:
     def __init__(self):
@@ -16,37 +14,29 @@ class EmissionsAnalyzer:
         """Extract emissions data using Claude."""
         logging.info("Starting emissions data extraction...")
 
-        # Extract relevant lines with context and remove duplicates
+        # Extract relevant lines with context, ensuring no duplicates
         relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
         relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicates
+
         if not relevant_lines:
             logging.warning("No relevant context found for Scope 1/2 in text")
             return None
 
-        # Write the relevant lines to a file for inspection
+        # Save the relevant lines to a file for inspection
         with open("claude_input_data.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(relevant_lines))
 
-        # Split into chunks if text exceeds Claude's input limit
+        # Combine lines into chunks for Claude's input
         chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
         all_results = []
 
-        for i, chunk in enumerate(chunks):
-            # Write each chunk to a file for inspection
-            chunk_filename = f"claude_input_chunk_{i + 1}.txt"
-            with open(chunk_filename, "w", encoding="utf-8") as f:
-                f.write(chunk)
-
+        for chunk in chunks:
             result = self._send_to_claude(chunk, company_name)
             if result:
                 all_results.append(result)
 
         # Aggregate results from all chunks
-        final_results = self._aggregate_results(all_results)
-
-        # Print formatted output to terminal
-        self._pretty_print_output(final_results)
-        return final_results
+        return self._aggregate_results(all_results)
 
     def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
         """Extract lines containing relevant keywords and include surrounding context."""
@@ -95,8 +85,7 @@ Return ONLY this JSON format:
     "year": <YYYY or null>,
     "scope_1": {{
       "value": <number or null>,
-      "unit": "metric tons CO2e",
-      "measurement": "<market-based or location-based or unknown>"
+      "unit": "metric tons CO2e"
     }},
     "scope_2_market_based": {{
       "value": <number or null>,
@@ -164,29 +153,24 @@ Text to analyze:
     def _aggregate_results(self, results: List[Dict]) -> Dict:
         """Combine results from multiple chunks."""
         combined = {
+            "company": None,
+            "sector": None,
             "current_year": {},
             "previous_years": [],
-            "source_details": None,
-            "sector": None
+            "source_details": None
         }
 
         for result in results:
+            if not combined["company"]:
+                combined["company"] = result.get("company", None)
+            if not combined["sector"]:
+                combined["sector"] = result.get("sector", None)
             if not combined["current_year"]:
                 combined["current_year"] = result.get("current_year", {})
             combined["previous_years"].extend(result.get("previous_years", []))
             if not combined["source_details"]:
                 combined["source_details"] = result.get("source_details", None)
-            if not combined["sector"]:
-                combined["sector"] = result.get("sector", None)
 
+        # Ensure no duplicates in previous years
+        combined["previous_years"] = list({json.dumps(year): year for year in combined["previous_years"]}.values())
         return combined
-
-    def _pretty_print_output(self, data: Dict):
-        """Format and display the output in the terminal."""
-        if not data:
-            print(colored("No data to display.", "red"))
-            return
-
-        formatted_json = json.dumps(data, indent=4)
-        print(colored(f"Results for {data.get('company', 'Unknown Company')}:", "blue", attrs=["bold"]))
-        print(colored(formatted_json, "green"))
