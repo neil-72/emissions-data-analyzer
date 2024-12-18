@@ -8,116 +8,111 @@
 </head>
 <body class="bg-gray-50">
     <div class="min-h-screen">
-        <nav class="bg-white shadow-sm">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-gray-800">Emissions Data Analyzer</h1>
-                        </div>
-                    </div>
-                </div>
+        <!-- ... Previous HTML content ... -->
+
+        <!-- Loading State -->
+        <div id="loading" class="hidden">
+            <div class="flex justify-center items-center py-12">
+                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
             </div>
-        </nav>
+        </div>
 
-        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            <!-- Search Form -->
-            <div class="bg-white shadow sm:rounded-lg mb-6">
-                <div class="px-4 py-5 sm:p-6">
-                    <form id="searchForm" class="space-y-6">
-                        <div>
-                            <label for="identifier-type" class="block text-sm font-medium text-gray-700">Search By</label>
-                            <select id="identifier-type" name="identifier-type" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                <option value="company">Company Name</option>
-                                <option value="isin">ISIN</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label for="identifier" class="block text-sm font-medium text-gray-700">Enter Company Name or ISIN</label>
-                            <input type="text" name="identifier" id="identifier" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                        </div>
-
-                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            Analyze Emissions Data
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Results Section -->
-            <div id="results" class="bg-white shadow sm:rounded-lg hidden">
-                <div class="px-4 py-5 sm:p-6">
-                    <h2 class="text-lg font-medium text-gray-900 mb-4">Analysis Results</h2>
-                    
-                    <!-- Filters -->
-                    <div class="mb-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Filter Data</label>
-                        <div class="flex space-x-4">
-                            <label class="inline-flex items-center">
-                                <input type="checkbox" class="form-checkbox" name="filter-scope1" checked>
-                                <span class="ml-2">Scope 1</span>
-                            </label>
-                            <label class="inline-flex items-center">
-                                <input type="checkbox" class="form-checkbox" name="filter-scope2" checked>
-                                <span class="ml-2">Scope 2</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Data Display -->
-                    <div id="data-display" class="rounded-lg border border-gray-200 overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <pre id="json-display" class="p-4 text-sm text-gray-900 font-mono bg-gray-50"></pre>
-                        </div>
-                    </div>
-
-                    <!-- Download Button -->
-                    <div class="mt-4 flex justify-end">
-                        <button id="downloadBtn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                            Download Results
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Loading State -->
-            <div id="loading" class="hidden">
-                <div class="flex justify-center items-center py-12">
-                    <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <!-- Error Message -->
+        <div id="error" class="hidden bg-red-50 border-l-4 border-red-400 p-4 mt-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
                     </svg>
                 </div>
-            </div>
-
-            <!-- Error Message -->
-            <div id="error" class="hidden bg-red-50 border-l-4 border-red-400 p-4 mt-6">
-                <div class="flex">
-                    <div class="flex-shrink-0">
-                        <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                        </svg>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm text-red-700" id="error-message"></p>
-                    </div>
+                <div class="ml-3">
+                    <p class="text-sm text-red-700" id="error-message"></p>
                 </div>
             </div>
-        </main>
+        </div>
     </div>
 
     <script>
-        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+        // Cache DOM elements
+        const searchForm = document.getElementById('searchForm');
+        const identifierType = document.getElementById('identifier-type');
+        const identifierInput = document.getElementById('identifier');
+        const identifierLabel = document.getElementById('identifier-label');
+        const companyPreview = document.getElementById('company-preview');
+        const companyNameDisplay = document.getElementById('company-name-display');
+        const validationMessage = document.getElementById('validation-message');
+        const loadingElement = document.getElementById('loading');
+        const resultsElement = document.getElementById('results');
+        const errorElement = document.getElementById('error');
+        const errorMessageElement = document.getElementById('error-message');
+
+        // ISIN validation timeout
+        let isinValidationTimeout = null;
+
+        // Update UI based on identifier type
+        identifierType.addEventListener('change', () => {
+            const isISIN = identifierType.value === 'isin';
+            identifierLabel.textContent = isISIN ? 'Enter ISIN' : 'Enter Company Name';
+            companyPreview.classList.add('hidden');
+            validationMessage.classList.add('hidden');
+            identifierInput.value = '';
+        });
+
+        // Real-time ISIN validation and company lookup
+        identifierInput.addEventListener('input', async (e) => {
+            if (identifierType.value !== 'isin') return;
+
+            clearTimeout(isinValidationTimeout);
+            const isin = e.target.value.trim().toUpperCase();
+
+            if (isin.length === 12) {
+                isinValidationTimeout = setTimeout(async () => {
+                    try {
+                        const response = await fetch(`/validate-isin/${isin}`);
+                        const data = await response.json();
+
+                        if (data.valid) {
+                            companyNameDisplay.textContent = data.company_name;
+                            companyPreview.classList.remove('hidden');
+                            validationMessage.classList.add('hidden');
+                        } else {
+                            validationMessage.textContent = data.error;
+                            validationMessage.classList.remove('hidden');
+                            companyPreview.classList.add('hidden');
+                        }
+                    } catch (error) {
+                        validationMessage.textContent = 'Error validating ISIN';
+                        validationMessage.classList.remove('hidden');
+                        companyPreview.classList.add('hidden');
+                    }
+                }, 500);
+            } else {
+                companyPreview.classList.add('hidden');
+                if (isin.length > 0) {
+                    validationMessage.textContent = 'ISIN must be exactly 12 characters';
+                    validationMessage.classList.remove('hidden');
+                } else {
+                    validationMessage.classList.add('hidden');
+                }
+            }
+        });
+
+        // Form submission
+        searchForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const identifier = document.getElementById('identifier').value;
-            const idType = document.getElementById('identifier-type').value;
+            const identifier = identifierInput.value.trim();
+            const idType = identifierType.value;
             
+            if (!identifier) return;
+
             // Show loading, hide results and error
-            document.getElementById('loading').classList.remove('hidden');
-            document.getElementById('results').classList.add('hidden');
-            document.getElementById('error').classList.add('hidden');
+            loadingElement.classList.remove('hidden');
+            resultsElement.classList.add('hidden');
+            errorElement.classList.add('hidden');
             
             try {
                 const response = await fetch('/analyze', {
@@ -137,58 +132,79 @@
                     throw new Error(data.error || 'Failed to analyze emissions data');
                 }
                 
+                // Update company info
+                const companyDetails = document.getElementById('company-details');
+                companyDetails.innerHTML = `
+                    <p><strong>Company:</strong> ${data.company}</p>
+                    ${data.original_isin ? `<p><strong>ISIN:</strong> ${data.original_isin}</p>` : ''}
+                    <p><strong>Report Year:</strong> ${data.report_year}</p>
+                `;
+
                 // Update results display
-                document.getElementById('json-display').textContent = JSON.stringify(data, null, 2);
-                document.getElementById('results').classList.remove('hidden');
+                document.getElementById('json-display').textContent = JSON.stringify(data.emissions_data, null, 2);
+                resultsElement.classList.remove('hidden');
                 
             } catch (error) {
-                document.getElementById('error-message').textContent = error.message;
-                document.getElementById('error').classList.remove('hidden');
+                errorMessageElement.textContent = error.message;
+                errorElement.classList.remove('hidden');
             } finally {
-                document.getElementById('loading').classList.add('hidden');
+                loadingElement.classList.add('hidden');
             }
         });
 
-        // Filter checkbox handling
-        document.querySelectorAll('input[name^="filter-"]').forEach(checkbox => {
-            checkbox.addEventListener('change', () => {
-                const data = JSON.parse(document.getElementById('json-display').textContent);
-                const filtered = filterData(data);
-                document.getElementById('json-display').textContent = JSON.stringify(filtered, null, 2);
-            });
-        });
-
-        function filterData(data) {
-            const showScope1 = document.querySelector('input[name="filter-scope1"]').checked;
-            const showScope2 = document.querySelector('input[name="filter-scope2"]').checked;
+        // Download functionality
+        function downloadData(format) {
+            const data = JSON.parse(document.getElementById('json-display').textContent);
+            const company = document.getElementById('company-details').querySelector('p').textContent.split(':')[1].trim();
             
-            const filtered = {...data};
-            
-            if (!showScope1) {
-                delete filtered.emissions_data.scope_1;
+            if (format === 'json') {
+                downloadJson(data, company);
+            } else if (format === 'csv') {
+                downloadCsv(data, company);
             }
-            if (!showScope2) {
-                delete filtered.emissions_data.scope_2;
-                delete filtered.emissions_data.scope_2_market_based;
-                delete filtered.emissions_data.scope_2_location_based;
-            }
-            
-            return filtered;
         }
 
-        // Download button handling
-        document.getElementById('downloadBtn').addEventListener('click', () => {
-            const data = document.getElementById('json-display').textContent;
-            const blob = new Blob([data], { type: 'application/json' });
+        function downloadJson(data, company) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'emissions_data.json';
+            a.download = `${company.toLowerCase().replace(/\s+/g, '_')}_emissions.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        });
+        }
+
+        function downloadCsv(data, company) {
+            // Convert emissions data to CSV format
+            const rows = [];
+            rows.push(['Metric', 'Value', 'Unit']);
+            
+            if (data.scope_1) {
+                rows.push(['Scope 1', data.scope_1.value, data.scope_1.unit]);
+            }
+            if (data.scope_2) {
+                rows.push(['Scope 2', data.scope_2.value, data.scope_2.unit]);
+            }
+            if (data.scope_2_market_based) {
+                rows.push(['Scope 2 (Market-based)', data.scope_2_market_based.value, data.scope_2_market_based.unit]);
+            }
+            if (data.scope_2_location_based) {
+                rows.push(['Scope 2 (Location-based)', data.scope_2_location_based.value, data.scope_2_location_based.unit]);
+            }
+
+            const csvContent = rows.map(row => row.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${company.toLowerCase().replace(/\s+/g, '_')}_emissions.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
     </script>
 </body>
 </html>
