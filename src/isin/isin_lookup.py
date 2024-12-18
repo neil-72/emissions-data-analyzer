@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 import yfinance as yf
 import requests
 import logging
@@ -103,8 +103,6 @@ class ISINLookup:
 
     def _isin_to_ticker(self, isin: str) -> Optional[str]:
         """Convert ISIN to Yahoo Finance ticker"""
-        # This is a simplified version - in production you'd want a proper
-        # ISIN to ticker mapping service or database
         try:
             search_url = f"https://query2.finance.yahoo.com/v1/finance/search"
             params = {
@@ -126,8 +124,6 @@ class ISINLookup:
 
     def _ticker_to_isin(self, ticker: str) -> Optional[str]:
         """Convert ticker to ISIN"""
-        # This is a placeholder - in production you'd want a proper
-        # ticker to ISIN mapping service or database
         try:
             company = yf.Ticker(ticker)
             info = company.info
