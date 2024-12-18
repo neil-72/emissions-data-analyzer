@@ -5,7 +5,6 @@ from typing import Dict, Optional, List
 from anthropic import Anthropic
 from ..config import CLAUDE_API_KEY
 
-
 class EmissionsAnalyzer:
     def __init__(self):
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
@@ -121,20 +120,18 @@ class EmissionsAnalyzer:
         """.strip()
 
         try:
-            response = self.client.messages.create(
-                model="claude-3-opus-20240229",
-                max_tokens=4096,
-                temperature=0,
-                messages=[
-                    {"role": "user", "content": message}
-                ]
+            response = self.client.complete(
+                prompt=f"\n\nHuman: {message}\n\nAssistant: ",
+                model="claude-2",
+                max_tokens_to_sample=4096,
+                temperature=0
             )
             
-            if not response.content:
+            if not response.completion:
                 logging.warning("No content in Claude response")
                 return None
 
-            return self._parse_and_validate(response.content[0].text)
+            return self._parse_and_validate(response.completion)
 
         except Exception as e:
             logging.error(f"Error in Claude analysis: {str(e)}")
