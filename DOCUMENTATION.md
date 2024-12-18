@@ -2,127 +2,161 @@
 
 ## Overview
 
-This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from company sustainability reports using a combination of the Brave Search API for document discovery and Claude AI for data extraction.
+This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from company sustainability reports using the Brave Search API for document discovery and Claude AI for intelligent data extraction.
 
 ## System Components
 
 ### 1. Search Module (`src/search/brave_search.py`)
-- **Purpose**: Finds company sustainability reports using the Brave Search API.
+- **Purpose**: Locates company sustainability reports in PDF format.
 - **Key Features**:
-  - Multiple search strategies for sustainability reports, CDP responses, and ESG reports.
-  - Relevance scoring for search results.
-  - Filtering for official company domains.
+  - PDF-focused search with filetype filtering
+  - Validation of documents for emissions content
+  - Filtering of non-report documents (10-K, proxy statements)
+  - Configurable search years
 - **Main Class**: `BraveSearchClient`
-  - `search_sustainability_report()`: Main method for locating reports.
-  - `_calculate_relevance_score()`: Ranks search results based on relevance.
+  - `search_sustainability_report()`: Finds and validates sustainability reports
+  - Built-in validation for Scope 1 mentions
+  - Comprehensive error handling and logging
 
 ### 2. Document Processing (`src/extraction/pdf_handler.py`)
-- **Purpose**: Extracts text from PDFs and webpages.
+- **Purpose**: Extracts structured content from PDF reports.
 - **Key Features**:
-  - Handles both PDF and HTML content.
-  - Retry logic for failed downloads.
-  - Alternative URL generation and web archive fallback.
-  - Page-level emissions data detection.
+  - Multi-column text detection and handling
+  - Table structure preservation
+  - Content type tagging (TABLE, TEXT, DATA, HEADER)
+  - Page number tracking
+  - Size limit enforcement
 - **Main Class**: `DocumentHandler`
-  - `extract_text_from_pdf()`: Processes PDFs with retries and page markers.
-  - `extract_text_from_webpage()`: Processes HTML documents.
-  - `get_document_content()`: Main entry point for content extraction.
-  - `EMISSIONS_KEYWORDS`: List of terms to detect relevant emissions data.
+  - `get_document_content()`: Main extraction method
+  - `_extract_text_with_columns()`: Smart column handling
+  - `_process_table()`: Table structure preservation
+  - `_process_text()`: Text context preservation
 
 ### 3. Data Analysis (`src/analysis/claude_analyzer.py`)
-- **Purpose**: Extracts emissions data using Claude AI.
+- **Purpose**: Uses Claude AI to extract and structure emissions data.
 - **Key Features**:
-  - Structured data extraction.
-  - Smart targeting of report sections.
-  - Data validation and normalization.
-  - Multiple extraction strategies.
+  - Uses Claude 3 Sonnet model
+  - Text chunking for large documents
+  - Unit normalization to metric tons CO2e
+  - Historical data extraction
+  - Source context preservation
 - **Main Class**: `EmissionsAnalyzer`
-  - `extract_emissions_data()`: Core method for extracting emissions data.
-  - `_extract_relevant_sections()`: Targets critical sections of reports.
-  - `_validate_emissions_data()`: Ensures extracted data meets quality standards.
+  - `extract_emissions_data()`: Core extraction method
+  - `_send_to_claude()`: AI interaction
+  - `_parse_and_validate()`: Data validation
+  - `_aggregate_results()`: Result combination
 
 ### 4. Main Application (`src/main.py`)
-- **Purpose**: Orchestrates the entire emissions data analysis pipeline.
+- **Purpose**: Orchestrates the analysis pipeline.
 - **Key Features**:
-  - End-to-end report processing.
-  - Robust error handling and retry mechanisms.
-  - Results storage in standardized formats.
-  - Detailed logging for debugging.
+  - Command-line interface
+  - JSON output format
+  - Error handling and logging
+  - Clean exit handling
 - **Main Class**: `EmissionsTracker`
-  - `process_company()`: Main method for analyzing emissions data for a company.
+  - `process_company()`: Main processing method
+  - `_save_results()`: Result storage
+  - Comprehensive error handling
 
-## Data Validation
+## Data Processing Flow
 
-### Validation Ranges
-- **Scope 1**: 100 - 10,000,000 metric tons CO2e.
-- **Scope 2**: 1,000 - 20,000,000 metric tons CO2e.
+1. **Input**: Company name
+2. **Search**: Locate recent sustainability report PDFs
+3. **Validation**: Verify document relevance
+4. **Extraction**: Process PDF content
+5. **Analysis**: Extract emissions data using AI
+6. **Output**: Structured JSON with:
+   - Current year emissions
+   - Historical data
+   - Source context
+   - Processing metadata
 
-### Data Quality Checks
-1. Numeric value validation.
-2. Unit format verification.
-3. Year format checking.
-4. Range validation against corporate benchmarks.
-5. Cross-referencing Scope 1 and Scope 2 data for consistency.
+## Output Format
 
-## Target Sections
+```json
+{
+  "company": "Company Name",
+  "report_url": "PDF URL",
+  "report_year": YYYY,
+  "emissions_data": {
+    "current_year": {
+      "year": YYYY,
+      "scope_1": {
+        "value": number,
+        "unit": "metric tons CO2e"
+      },
+      "scope_2_market_based": {
+        "value": number,
+        "unit": "metric tons CO2e"
+      },
+      "scope_2_location_based": {
+        "value": number,
+        "unit": "metric tons CO2e"
+      }
+    },
+    "previous_years": [
+      {
+        "year": YYYY,
+        "scope_1": {...},
+        "scope_2_market_based": {...},
+        "scope_2_location_based": {...}
+      }
+    ]
+  },
+  "processed_at": "ISO timestamp"
+}
+```
 
-### Primary Sections
-The system specifically targets the following report sections:
-- Greenhouse Gas Emissions.
-- Climate Change.
-- Environmental Data.
-- Scope 1 and 2.
-- GHG Emissions.
-- Carbon Footprint.
+## Known Limitations
 
-### Table Indicators
-Key patterns that indicate relevant emissions data:
-- Table headers containing 'scope' or 'emissions'.
-- Numeric sequences with units such as tCO2e or MTCO2e.
-- Year columns followed by numeric data.
-- Indented lists of emissions figures.
+1. PDF-only support (no HTML processing)
+2. Requires direct PDF access (no login walls)
+3. English language focus
+4. Resource-intensive for large reports
+5. API key requirements (Brave Search and Claude)
+
+## Setup Requirements
+
+1. Python 3.8 or higher
+2. Brave Search API key
+3. Claude API key
+4. Required Python packages:
+   - requests
+   - pdfplumber
+   - anthropic
+   - logging
 
 ## Error Handling
 
-### PDF Access Issues
-1. Retry failed downloads with exponential backoff.
-2. Attempt alternative URLs for the report.
-3. Use web archives to retrieve inaccessible documents.
-4. Handle alternative document formats where available.
-
-### Data Extraction Issues
-1. Use targeted section extraction when possible.
-2. Fall back to searching the full document.
-3. Search for alternative emissions data sources within the report.
-4. Detect and process table-specific formats for structured data.
-
-### Validation Issues
-1. Identify and correct unit conversion errors.
-2. Verify alignment of extracted data with expected years.
-3. Compare extracted data against corporate emissions benchmarks.
-4. Search for common data patterns to ensure accuracy.
-
-## Known Limitations
-1. Some companies block PDF downloads or restrict access.
-2. Report formats vary significantly across industries and regions.
-3. Historical data may be inconsistent or incomplete.
-4. Optical Character Recognition (OCR) for scanned PDFs is not currently implemented.
-
-## Extension Points
-1. Add OCR capabilities for processing scanned documents.
-2. Incorporate additional data sources for emissions metrics.
-3. Expand validation rules to include more comprehensive checks.
-4. Develop a web-based interface for easier user interaction.
+The system implements comprehensive error handling:
+1. Network timeout protection
+2. PDF validation
+3. Content extraction fallbacks
+4. AI response validation
+5. Result aggregation checks
 
 ## Debugging Tips
-1. Verify `.env` file configuration for API keys.
-2. Check that the API keys (Claude and Brave) are active and valid.
-3. Monitor console logs for detailed error messages and debugging information.
-4. Ensure network connectivity for API requests.
-5. Verify Python version compatibility (3.8 or higher is required).
 
-## Maintenance Notes
-1. Update API keys periodically to ensure uninterrupted access.
-2. Monitor API rate limits for both Brave and Claude services.
-3. Regularly review and update search terms to match evolving report formats.
-4. Test the system with new reports to ensure compatibility with updated layouts.
+1. Check API keys in configuration
+2. Monitor logging output
+3. Verify PDF accessibility
+4. Check network connectivity
+5. Validate input company names
+
+## Future Development
+
+Potential areas for enhancement:
+1. Support for additional document formats
+2. Multi-language support
+3. Batch processing capability
+4. Web interface development
+5. Additional data source integration
+
+## Maintenance
+
+Regular maintenance tasks:
+1. Update API keys as needed
+2. Monitor API usage and limits
+3. Update dependencies
+4. Test with new report formats
+5. Review and update logging
