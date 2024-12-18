@@ -10,36 +10,108 @@ A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from c
 4. Saves intermediate files (claude_input_data.txt) for inspection of processed text 
 5. Validates and aggregates results across multiple chunks of text
 
-## Setup
+## Installation Guide
 
-1. Clone the repository:
-```bash
-git clone https://github.com/neil-72/emissions-data-analyzer.git
-cd emissions-data-analyzer
-```
+### Prerequisites
+- Python 3.8 or higher
+- Git
+- Text editor of your choice
+- Brave Search API key (get from [Brave API Portal](https://brave.com/search/api/))
+- Claude API key (get from [Anthropic Console](https://console.anthropic.com/))
 
-2. Create virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate # On Windows: venv\Scripts\activate
-```
+### Step-by-Step Installation
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/neil-72/emissions-data-analyzer.git
+   cd emissions-data-analyzer
+   ```
 
-4. Set up environment variables:
-Create a .env file:
-```env
-CLAUDE_API_KEY=your_claude_api_key
-BRAVE_API_KEY=your_brave_api_key
-```
+2. **Set Up Virtual Environment**
+   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   # On macOS/Linux:
+   source venv/bin/activate
+   # On Windows:
+   venv\\Scripts\\activate
+   ```
 
-5. Run the program:
-```bash
-python -m src.main
-```
+   After activation, your prompt should show (venv) at the beginning.
+
+3. **Install Dependencies**
+   ```bash
+   # Upgrade pip first
+   pip install --upgrade pip
+   
+   # Install required packages
+   pip install -r requirements.txt
+   ```
+
+4. **Configure Environment Variables**
+
+   Create a .env file in the project root:
+   ```bash
+   # Method 1: Using cat (macOS/Linux)
+   cat > .env <<EOL
+   CLAUDE_API_KEY=your_claude_api_key
+   BRAVE_API_KEY=your_brave_api_key
+   EOL
+
+   # Method 2: Using echo (Windows)
+   echo CLAUDE_API_KEY=your_claude_api_key > .env
+   echo BRAVE_API_KEY=your_brave_api_key >> .env
+   
+   # Method 3: Manually create .env in your text editor
+   # Add these lines:
+   CLAUDE_API_KEY=your_claude_api_key
+   BRAVE_API_KEY=your_brave_api_key
+   ```
+
+   Replace `your_claude_api_key` and `your_brave_api_key` with your actual API keys.
+
+5. **Verify Installation**
+   ```bash
+   # Should show the virtual environment activated
+   which python  # On Windows: where python
+   
+   # Should show all required packages
+   pip list
+   
+   # Test environment variables
+   python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(bool(os.getenv('CLAUDE_API_KEY'))); print(bool(os.getenv('BRAVE_API_KEY')))"
+   ```
+
+6. **Run the Program**
+   ```bash
+   python -m src.main
+   ```
+
+### Troubleshooting
+
+1. **Virtual Environment Issues**
+   - If `venv` creation fails, try: `python -m pip install --user virtualenv`
+   - If activation shows errors, check Python installation
+   - On Windows, if activation is blocked, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
+2. **Package Installation Issues**
+   - If pip install fails, try: `pip install --upgrade pip setuptools wheel`
+   - For SSL errors, check Python's SSL certificates
+   - For build errors, install your OS's build tools
+
+3. **Environment Variables**
+   - If .env isn't loading, check file location and format
+   - No quotes needed around API keys
+   - No spaces around the = sign
+   - Each variable on a new line
+
+4. **Common Error Messages**
+   - "ModuleNotFoundError": Check virtual environment activation
+   - "ImportError": Verify all requirements are installed
+   - "KeyError": Check .env file configuration
+   - "Permission denied": Check file/directory permissions
 
 ## How it Works
 
@@ -88,21 +160,6 @@ Example output when analyzing NVIDIA's sustainability report:
         },
         "scope_2_location_based": {
           "value": 142909,
-          "unit": "metric tons CO2e"
-        }
-      },
-      {
-        "year": 2022,
-        "scope_1": {
-          "value": 4612,
-          "unit": "metric tons CO2e"
-        },
-        "scope_2_market_based": {
-          "value": 78210,
-          "unit": "metric tons CO2e"
-        },
-        "scope_2_location_based": {
-          "value": 133569,
           "unit": "metric tons CO2e"
         }
       }
