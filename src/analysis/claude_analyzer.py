@@ -6,42 +6,35 @@ from anthropic import Anthropic
 from ..config import CLAUDE_API_KEY
 
 class EmissionsAnalyzer:
-    """# Claude-based Emissions Data Analyzer
-    # Key capabilities:
-    # - Smart context extraction from PDF text
-    # - Handles multiple data formats (tables, text, footnotes)
-    # - Validates and normalizes units
-    # - Detects and handles data restatements
-    # - Aggregates data from multiple sections
+    """# Emissions Data Analyzer using Claude
+    # Extracts Scope 1 and 2 emissions data from PDF text
+    # Handles tables and narrative text sections
     """
     def __init__(self):
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
-        # Pattern to find relevant sections
+        # Pattern to find emissions data sections
         self.scope_pattern = r'(?i)scope\s*[12]'
-        # Minimum confidence threshold for data
-        self.confidence_threshold = 0.8
 
     def extract_emissions_data(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """# Main extraction method using Claude
-        # Process:
-        # 1. Extract relevant sections with smart context
-        # 2. Handle document chunking for large texts
-        # 3. Send to Claude with structured prompting
-        # 4. Validate and aggregate results"""
+        """# Main extraction method
+        # 1. Get relevant text sections
+        # 2. Split into manageable chunks
+        # 3. Send to Claude for analysis
+        # 4. Combine results"""
         logging.info("Starting emissions data extraction...")
 
-        # Get context-aware sections
-        relevant_sections = self._extract_sections_with_context(text)
-        if not relevant_sections:
-            logging.warning("No relevant sections found for Scope 1/2 in text")
+        # Extract relevant lines with context
+        relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
+        if not relevant_lines:
+            logging.warning("No relevant context found for Scope 1/2 in text")
             return None
 
-        # Save intermediate data for debugging
+        # Save for inspection
         with open("claude_input_data.txt", "w", encoding="utf-8") as f:
-            f.write("\n".join(relevant_sections))
+            f.write("\n".join(relevant_lines))
 
-        # Process in chunks if needed
-        chunks = self._split_into_chunks(relevant_sections, max_chars=30000)
+        # Process chunks
+        chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
         all_results = []
 
         for chunk in chunks:
@@ -49,184 +42,107 @@ class EmissionsAnalyzer:
             if result:
                 all_results.append(result)
 
-        # Combine and validate results
-        return self._aggregate_and_validate_results(all_results)
+        return self._aggregate_results(all_results)
 
-    def _extract_sections_with_context(self, text: str) -> List[str]:
-        """# Smart context extraction
-        # Features:
-        # 1. Keeps full tables when found
-        # 2. Preserves section boundaries
-        # 3. Includes footnotes and references
-        # 4. Maintains document hierarchy"""
-        sections = []
-        current_section = []
-        in_table = False
-        in_scope_section = False
-        table_buffer = []
-
+    def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
+        """# Extract relevant lines plus surrounding context"""
         lines = text.split('\n')
+        relevant_lines = []
         
         for i, line in enumerate(lines):
-            # Handle table sections
-            if line.startswith('=== TABLE'):
-                in_table = True
-                table_buffer = [line]
-                continue
-                
-            if in_table:
-                table_buffer.append(line)
-                if line.strip() == '':
-                    in_table = False
-                    if any(re.search(self.scope_pattern, l) for l in table_buffer):
-                        sections.extend(table_buffer)
-                    table_buffer = []
-                continue
-                
-            # Handle text sections with smart boundary detection
             if re.search(self.scope_pattern, line):
-                in_scope_section = True
-                section_start = i
+                start = max(0, i - lines_before)
+                end = min(len(lines), i + lines_after + 1)
+                # Keep table headers if in context
+                if any(lines[j].startswith('=== TABLE') for j in range(start, end)):
+                    while start > 0 and not lines[start].startswith('=== TABLE'):
+                        start -= 1
+                relevant_lines.extend(lines[start:end])
                 
-                # Look backwards for section start
-                while section_start > 0 and not lines[section_start].startswith('==='):
-                    if re.search(r'(?i)(section|chapter|part)\s+\d+', lines[section_start]):
-                        break
-                    section_start -= 1
-                    
-                # Look forwards for section end
-                section_end = i
-                while section_end < len(lines):
-                    if lines[section_end].startswith('===') or \
-                       re.search(r'(?i)(section|chapter|part)\s+\d+', lines[section_end]):
-                        break
-                    section_end += 1
-                    
-                sections.extend(lines[section_start:section_end])
-                
-        return sections
+        return relevant_lines
 
     def _split_into_chunks(self, lines: List[str], max_chars: int) -> List[str]:
-        """# Smart document chunking
-        # Features:
-        # 1. Preserves table integrity
-        # 2. Maintains section boundaries
-        # 3. Keeps related content together"""
+        """# Split text into chunks while preserving context"""
         chunks = []
         current_chunk = []
         current_length = 0
-        in_table = False
 
         for line in lines:
             line_length = len(line) + 1
             
-            # Start new table
-            if line.startswith('=== TABLE'):
-                if current_length + line_length > max_chars and current_chunk:
+            # Start new chunk if needed
+            if current_length + line_length > max_chars:
+                if current_chunk:
                     chunks.append("\n".join(current_chunk))
                     current_chunk = []
                     current_length = 0
-                in_table = True
-                
-            # End of table
-            if in_table and line.strip() == '':
-                in_table = False
-                
-            # Keep tables together
-            if current_length + line_length > max_chars and not in_table:
-                chunks.append("\n".join(current_chunk))
-                current_chunk = []
-                current_length = 0
-                
+                    
             current_chunk.append(line)
             current_length += line_length
 
         if current_chunk:
             chunks.append("\n".join(current_chunk))
+            
         return chunks
 
     def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """# Structured Claude analysis
-        # Features:
-        # 1. Clear document structure explanation
-        # 2. Handles multiple data formats
-        # 3. Unit validation and conversion
-        # 4. Data restatement detection"""
+        """# Send text to Claude for analysis
+        # Returns clean, standardized emissions data format"""
         prompt = f"""
-You are analyzing a sustainability report{f' for {company_name}' if company_name else ''}.
+Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
 
-# Document Structure:
 The text contains marked sections:
 - "=== TABLE X ON PAGE Y ===" indicates table data
 - "HEADER:" shows column names
 - "DATA:" contains values
-- "SCOPE:" indicates scope sections
 - "=== TEXT ON PAGE Y ===" shows narrative sections
 
-# Analysis Instructions:
-1. Prioritize data from tables over narrative text
-2. Check for data restatements/corrections
-3. Verify all units are in metric tons CO2e
-4. Note the source page numbers and context
-5. If multiple values exist, use the most recently stated
-6. Pay attention to fiscal vs calendar year
+Focus on:
+1. Extract Scope 1 and Scope 2 emissions values
+2. Get both market-based and location-based Scope 2 when available
+3. Include current year and up to 2 previous years
+4. Note page numbers where data was found
+5. All values should be in metric tons CO2e
 
-# Data Requirements:
-- Current year Scope 1 and 2 emissions
-- Previous 2 years of historical data
-- Both market-based and location-based Scope 2 when available
-- Source details including page numbers
-- Confidence level in data extraction
-
-Return in this exact JSON format:
+Return exactly this JSON format:
 {{
   "company": "{company_name or 'unknown'}",
   "sector": string or null,
-  "data_quality": {{
-    "confidence": float 0-1,
-    "notes": "Any data quality issues"
-  }},
   "current_year": {{
     "year": YYYY,
-    "year_type": "calendar" or "fiscal",
     "scope_1": {{
       "value": number,
-      "unit": "metric tons CO2e",
-      "source": "table/text",
-      "confidence": float 0-1
+      "unit": "metric tons CO2e"
     }},
     "scope_2_market_based": {{
       "value": number or null,
-      "unit": "metric tons CO2e",
-      "source": "table/text",
-      "confidence": float 0-1
+      "unit": "metric tons CO2e"
     }},
     "scope_2_location_based": {{
       "value": number or null,
-      "unit": "metric tons CO2e",
-      "source": "table/text",
-      "confidence": float 0-1
+      "unit": "metric tons CO2e"
     }}
   }},
   "previous_years": [
     {{
       "year": YYYY,
-      "year_type": "calendar" or "fiscal",
       "scope_1": {{
         "value": number,
-        "unit": "metric tons CO2e",
-        "source": "table/text",
-        "confidence": float 0-1
+        "unit": "metric tons CO2e"
       }},
-      "scope_2_market_based": same as above,
-      "scope_2_location_based": same as above
+      "scope_2_market_based": {{
+        "value": number or null,
+        "unit": "metric tons CO2e"
+      }},
+      "scope_2_location_based": {{
+        "value": number or null,
+        "unit": "metric tons CO2e"
+      }}
     }}
   ],
   "source_details": {{
     "location": "Pages X-Y",
-    "context": string,
-    "restatements": boolean,
-    "restatement_notes": string or null
+    "context": "Brief description of where data was found"
   }}
 }}
 
@@ -236,7 +152,7 @@ Text to analyze:
 
         try:
             response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-sonnet-20241022",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=4096
@@ -253,24 +169,15 @@ Text to analyze:
             return None
 
     def _parse_and_validate(self, content: str) -> Optional[Dict]:
-        """# Parse and validate Claude's response
-        # Checks:
-        # 1. Valid JSON structure
-        # 2. Required fields present
-        # 3. Data consistency
-        # 4. Unit standardization"""
+        """# Parse and validate Claude's response"""
         try:
             data = json.loads(content)
             
-            # Basic validation
+            # Check required fields
             required_fields = ['company', 'current_year', 'previous_years', 'source_details']
             if not all(field in data for field in required_fields):
                 logging.error("Missing required fields in Claude response")
                 return None
-                
-            # Validate confidence levels
-            if data.get('data_quality', {}).get('confidence', 0) < self.confidence_threshold:
-                logging.warning("Low confidence in data extraction")
                 
             return data
             
@@ -278,43 +185,32 @@ Text to analyze:
             logging.error("Failed to parse JSON from Claude response")
             return None
 
-    def _aggregate_and_validate_results(self, results: List[Dict]) -> Dict:
-        """# Smart result aggregation
-        # Features:
-        # 1. Resolves conflicts between chunks
-        # 2. Validates data consistency
-        # 3. Picks highest confidence values
-        # 4. Merges source details"""
+    def _aggregate_results(self, results: List[Dict]) -> Dict:
+        """# Combine results from multiple chunks"""
         if not results:
             return None
-            
-        # Start with highest confidence result
-        results.sort(key=lambda x: x.get('data_quality', {}).get('confidence', 0), reverse=True)
+
+        # Use first result as base
         combined = results[0].copy()
+        seen_years = {combined['current_year']['year']}
         
-        # Merge additional years from other chunks
-        all_years = set()
-        for result in results:
-            for year_data in result.get('previous_years', []):
-                year = year_data.get('year')
-                if year not in all_years:
-                    all_years.add(year)
-                    combined['previous_years'].append(year_data)
-                    
-        # Sort years chronologically
-        combined['previous_years'].sort(key=lambda x: x.get('year', 0), reverse=True)
-        
-        # Merge source details
-        all_pages = set()
-        all_notes = set()
-        for result in results:
-            source = result.get('source_details', {})
-            if 'location' in source:
-                all_pages.add(source['location'])
-            if 'context' in source:
-                all_notes.add(source['context'])
+        # Add unique years from other chunks
+        for result in results[1:]:
+            # Skip duplicate current years
+            if result['current_year']['year'] not in seen_years:
+                seen_years.add(result['current_year']['year'])
+                combined['previous_years'].append(result['current_year'])
                 
-        combined['source_details']['location'] = ', '.join(sorted(all_pages))
-        combined['source_details']['context'] = ' '.join(all_notes)
+            # Add unique previous years
+            for year_data in result.get('previous_years', []):
+                if year_data['year'] not in seen_years:
+                    seen_years.add(year_data['year'])
+                    combined['previous_years'].append(year_data)
+        
+        # Sort previous years newest to oldest
+        combined['previous_years'].sort(key=lambda x: x['year'], reverse=True)
+        
+        # Keep only 2 previous years
+        combined['previous_years'] = combined['previous_years'][:2]
         
         return combined
