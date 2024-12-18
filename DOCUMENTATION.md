@@ -77,29 +77,29 @@ This tool automatically extracts Scope 1 and Scope 2 carbon emissions data from 
 {
   "company": "Company Name",
   "report_url": "PDF URL",
-  "report_year": YYYY,
+  "report_year": "YYYY",
   "emissions_data": {
     "current_year": {
-      "year": YYYY,
+      "year": "YYYY",
       "scope_1": {
-        "value": number,
+        "value": "number",
         "unit": "metric tons CO2e"
       },
       "scope_2_market_based": {
-        "value": number,
+        "value": "number",
         "unit": "metric tons CO2e"
       },
       "scope_2_location_based": {
-        "value": number,
+        "value": "number",
         "unit": "metric tons CO2e"
       }
     },
     "previous_years": [
       {
-        "year": YYYY,
-        "scope_1": {...},
-        "scope_2_market_based": {...},
-        "scope_2_location_based": {...}
+        "year": "YYYY",
+        "scope_1": {},
+        "scope_2_market_based": {},
+        "scope_2_location_based": {}
       }
     ]
   },
