@@ -1,65 +1,45 @@
 # Technical Documentation
 
-This guide covers the technical details of the Emissions Data Analyzer tool.
-
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 emissions-data-analyzer/
-├── .env                 # Your API keys (don't commit!)
-├── .env.example        # Template for .env
-├── .flaskenv           # Flask configuration
-├── requirements.txt    # Python dependencies
+├── .env                  # API keys (not in repo)
+├── .env.example         # API key template
+├── .flaskenv            # Flask configuration
+├── .gitignore           # Git ignore rules
+├── README.md            # Project overview
+├── DOCUMENTATION.md     # Technical details
+├── requirements.txt     # Python dependencies
 └── src/
-    ├── web/           # Web interface
-    │   ├── app.py     # Main Flask application
-    │   ├── templates/ # HTML files
-    │   └── static/    # CSS, JS, etc.
-    ├── search/        # Brave Search integration
-    ├── analysis/      # Claude analysis logic
-    └── extraction/    # PDF processing
+    ├── __init__.py      # Makes src a package
+    ├── main.py          # CLI entry point
+    ├── web/             # Web interface
+    │   ├── __init__.py  # Makes web a package
+    │   ├── app.py       # Flask application
+    │   ├── templates/   # HTML templates
+    │   └── static/      # Static assets
+    ├── search/          # Search functionality
+    │   ├── __init__.py
+    │   └── brave_search.py
+    ├── extraction/      # PDF handling
+    │   ├── __init__.py
+    │   └── pdf_handler.py
+    └── analysis/        # Data analysis
+        ├── __init__.py
+        └── claude_analyzer.py
 ```
 
-## 🛠️ Setup Guide
-
-### 1. Development Environment
-
-```bash
-# Required files for Python packaging
-touch src/__init__.py
-touch src/web/__init__.py
-touch src/search/__init__.py
-touch src/analysis/__init__.py
-touch src/extraction/__init__.py
-
-# Required environment files
-touch .env       # API keys
-touch .flaskenv  # Flask config
-```
-
-### 2. Environment Files
-
-**.env**
-```bash
-CLAUDE_API_KEY=your_claude_api_key_here
-BRAVE_API_KEY=your_brave_api_key_here
-```
-
-**.flaskenv**
-```bash
-FLASK_APP=src.web.app
-FLASK_ENV=development  # Change to 'production' for deployment
-```
-
-## 🌐 API Endpoints
+## API Documentation
 
 ### POST /analyze
-Analyze emissions for a company.
 
-**Request:**
+Analyzes emissions data for a specified company.
+
+**Request Format:**
 ```json
 {
-  "identifier": "company_name"  // Required
+  "identifier": "company_name"
 }
 ```
 
@@ -77,116 +57,163 @@ Analyze emissions for a company.
     "scope_2_market_based": {
       "value": number,
       "unit": "string"
+    },
+    "scope_2_location_based": {
+      "value": number,
+      "unit": "string"
     }
   },
-  "processed_at": "ISO datetime"
+  "processed_at": "string (ISO datetime)"
 }
 ```
 
 **Error Responses:**
-- 400: Missing company name
-- 404: No report/data found
-- 500: Processing error
 
-## 🚦 Error Handling
+1. **400 Bad Request**
+   - Missing or invalid company name
+   ```json
+   {"error": "Company name required"}
+   ```
 
-The application uses HTTP status codes and JSON responses for errors:
+2. **404 Not Found**
+   - No sustainability report found
+   - No emissions data found
+   ```json
+   {"error": "No sustainability report found"}
+   ```
 
-```python
-# Example error response
-{
-  "error": "No sustainability report found for Company X"
-}
+3. **500 Internal Server Error**
+   - PDF processing errors
+   - Network errors
+   - Analysis errors
+   ```json
+   {"error": "Error processing PDF document"}
+   ```
+
+## Development Setup
+
+### Environment Files
+
+1. **.env**
+   ```bash
+   CLAUDE_API_KEY=your_claude_api_key
+   BRAVE_API_KEY=your_brave_api_key
+   ```
+
+2. **.flaskenv**
+   ```bash
+   FLASK_APP=src.web.app
+   FLASK_ENV=development
+   ```
+
+### Running Development Server
+```bash
+# From project root
+flask run --debug
 ```
 
-Common error scenarios:
-1. PDF not machine-readable
-2. No emissions data found
-3. Network timeout
-4. API rate limits
+### Production Deployment
 
-## 🖥️ Running in Production
-
-1. **Using Gunicorn** (Recommended)
+1. **Using Gunicorn**
    ```bash
    pip install gunicorn
    gunicorn -w 4 'src.web.app:app'
    ```
 
-2. **Using Docker**
+2. **Environment Variables**
    ```bash
-   docker build -t emissions-analyzer .
-   docker run -p 5000:5000 emissions-analyzer
+   export FLASK_ENV=production
+   export FLASK_DEBUG=0
    ```
 
-## 🔍 How It Works
-
-1. **Search Phase**
-   - Uses Brave Search API to find sustainability reports
-   - Filters for PDF documents
-   - Ranks by relevance and date
-
-2. **Extraction Phase**
-   - Downloads PDF
-   - Converts to text
-   - Preserves table structure
-
-3. **Analysis Phase**
-   - Claude AI identifies emissions data
-   - Normalizes units
-   - Validates data consistency
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-python -m pytest
-
-# Run specific test file
-python -m pytest tests/test_analyzer.py
-
-# Run with coverage
-python -m pytest --cov=src
-```
-
-## 📊 Data Handling
+## Data Processing
 
 ### Unit Conversions
-All data is converted to metric tons CO2e. Supported input units:
-- Metric tons (tonnes) CO2e
+
+Supported input units:
+- Metric tons CO2e (tCO2e)
+- Million metric tons CO2e (MtCO2e)
+- Kilograms CO2e (kgCO2e)
 - Short tons CO2e
-- Kilograms CO2e
-- Million metric tons CO2e
+- Kilowatts (converted using emission factors)
+
+All values are converted to metric tons CO2e for consistency.
 
 ### Data Validation
-- Checks for realistic ranges
-- Validates year consistency
-- Verifies unit conversions
 
-## 🔐 Security Notes
+1. **Range Validation**
+   - Values must be positive
+   - Upper limits based on company size
+   - Year validation against report date
 
-1. **API Keys**
-   - Never commit .env files
-   - Rotate keys regularly
-   - Use environment variables
+2. **Unit Consistency**
+   - All final values in metric tons CO2e
+   - Automatic unit detection and conversion
+   - Validation of conversion accuracy
+
+## Error Handling
+
+### Common Error Scenarios
+
+1. **PDF Processing**
+   - Non-readable PDFs
+   - Complex table layouts
+   - Missing or corrupt files
+
+2. **API Issues**
+   - Rate limits
+   - Authentication failures
+   - Network timeouts
+
+3. **Data Validation**
+   - Invalid units
+   - Out of range values
+   - Inconsistent data
+
+### Error Logging
+
+```python
+# Example error handling
+try:
+    result = process_document(url)
+except PDFProcessingError as e:
+    logger.error(f"PDF processing failed: {str(e)}")
+    raise HTTPException(status_code=500)
+except ValidationError as e:
+    logger.warning(f"Data validation failed: {str(e)}")
+    raise HTTPException(status_code=400)
+```
+
+## Security Considerations
+
+1. **API Key Management**
+   - Store keys in environment variables
+   - Regular key rotation
+   - Rate limiting implementation
 
 2. **Input Validation**
-   - All user input is sanitized
-   - URL parameters are validated
-   - File uploads are restricted
+   - Sanitize all user inputs
+   - Validate URLs before processing
+   - Restrict file types and sizes
 
 3. **Error Messages**
-   - Production errors hide implementation details
-   - Logging excludes sensitive data
+   - Generic errors in production
+   - Detailed logging for debugging
+   - No sensitive data in responses
 
-## 🚀 Performance Tips
+## Performance Optimization
 
-1. **Memory Usage**
-   - Large PDFs are processed in chunks
-   - Temporary files are cleaned up
-   - Results are cached when possible
+1. **Memory Management**
+   - Stream large PDFs
+   - Clean up temporary files
+   - Implement caching
 
-2. **API Optimization**
-   - Requests are rate-limited
-   - Responses are cached
-   - Batch operations where possible
+2. **Request Handling**
+   - Rate limiting
+   - Response caching
+   - Asynchronous processing
+
+3. **API Usage**
+   - Batch requests where possible
+   - Cache API responses
+   - Implement retries with backoff
