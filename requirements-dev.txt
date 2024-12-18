@@ -1,0 +1,15 @@
+-r requirements.txt
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.1.0
+
+# Linting
+flake8>=6.1.0
+black>=23.0.0
+
+# Type checking
+mypy>=1.0.0
+
+# Documentation
+Sphinx>=7.0.0
