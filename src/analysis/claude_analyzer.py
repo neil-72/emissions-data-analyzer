@@ -66,7 +66,7 @@ class EmissionsAnalyzer:
         return chunks
 
     def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
-        prompt = f"""
+        message = f"""
         Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
         Extract the following:
         1. Most recent Scope 1 and Scope 2 emissions data, with reporting year and measurement type (market-based or location-based).
@@ -121,18 +121,20 @@ class EmissionsAnalyzer:
         """.strip()
 
         try:
-            response = self.client.complete(
-                model="claude-2",
-                prompt=prompt,
+            response = self.client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=4096,
                 temperature=0,
-                max_tokens_to_sample=4096
+                messages=[
+                    {"role": "user", "content": message}
+                ]
             )
             
-            if not response.completion:
+            if not response.content:
                 logging.warning("No content in Claude response")
                 return None
 
-            return self._parse_and_validate(response.completion)
+            return self._parse_and_validate(response.content[0].text)
 
         except Exception as e:
             logging.error(f"Error in Claude analysis: {str(e)}")
