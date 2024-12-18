@@ -67,58 +67,60 @@ class EmissionsAnalyzer:
 
     def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
         prompt = f"""
-        Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
-        Extract the following:
-        1. Most recent Scope 1 and Scope 2 emissions data, with reporting year and measurement type (market-based or location-based).
-        2. Scope 1 and Scope 2 data for the previous two years.
-        3. Context of where the data was found.
-        Ensure all units are converted to metric tons CO2e if necessary.
 
-        Return ONLY this JSON format:
-        {{
-          "company": "{company_name}",
-          "sector": "<sector or null>",
-          "current_year": {{
-            "year": <YYYY or null>,
-            "scope_1": {{
-              "value": <number or null>,
-              "unit": "metric tons CO2e"
-            }},
-            "scope_2_market_based": {{
-              "value": <number or null>,
-              "unit": "metric tons CO2e"
-            }},
-            "scope_2_location_based": {{
-              "value": <number or null>,
-              "unit": "metric tons CO2e"
-            }}
-          }},
-          "previous_years": [
-            {{
-              "year": <YYYY or null>,
-              "scope_1": {{
-                "value": <number or null>,
-                "unit": "metric tons CO2e"
-              }},
-              "scope_2_market_based": {{
-                "value": <number or null>,
-                "unit": "metric tons CO2e"
-              }},
-              "scope_2_location_based": {{
-                "value": <number or null>,
-                "unit": "metric tons CO2e"
-              }}
-            }}
-          ],
-          "source_details": {{
-            "location": "<where found>",
-            "context": "<relevant context>"
-          }}
-        }}
+Human: Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
+Extract the following:
+1. Most recent Scope 1 and Scope 2 emissions data, with reporting year and measurement type (market-based or location-based).
+2. Scope 1 and Scope 2 data for the previous two years.
+3. Context of where the data was found.
+Ensure all units are converted to metric tons CO2e if necessary.
 
-        Text to analyze:
-        {text}
-        """.strip()
+Return ONLY this JSON format:
+{{
+  "company": "{company_name}",
+  "sector": "<sector or null>",
+  "current_year": {{
+    "year": <YYYY or null>,
+    "scope_1": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e"
+    }},
+    "scope_2_market_based": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e"
+    }},
+    "scope_2_location_based": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e"
+    }}
+  }},
+  "previous_years": [
+    {{
+      "year": <YYYY or null>,
+      "scope_1": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }},
+      "scope_2_market_based": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }},
+      "scope_2_location_based": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }}
+    }}
+  ],
+  "source_details": {{
+    "location": "<where found>",
+    "context": "<relevant context>"
+  }}
+}}
+
+Text to analyze:
+{text}
+
+Assistant: """.strip()
 
         try:
             response = self.client.completions.create(
