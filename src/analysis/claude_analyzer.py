@@ -1,8 +1,3 @@
-# EmissionsAnalyzer Class
-
-# Handles the extraction of Scope 1 and Scope 2 emissions data from sustainability reports.
-# Utilizes Claude API for advanced text analysis and ensures all units are in metric tons CO2e.
-
 import re
 import json
 import logging
@@ -12,92 +7,65 @@ from ..config import CLAUDE_API_KEY
 
 
 class EmissionsAnalyzer:
-    # Initialization of the EmissionsAnalyzer
     def __init__(self):
-        self.client = Anthropic(api_key=CLAUDE_API_KEY)  # Initialize the Claude API client.
-        self.scope_pattern = r'(?i)scope\s*[12]'  # Regex to identify Scope 1 and 2 in text.
+        self.client = Anthropic(api_key=CLAUDE_API_KEY)
+        self.scope_pattern = r'(?i)scope\s*[12]'
 
-    # Main method to extract emissions data
     def extract_emissions_data(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """
-        Orchestrates the entire data extraction process:
-        - Extracts relevant lines with context.
-        - Splits text into chunks for Claude API.
-        - Sends text chunks to Claude and validates the responses.
-        - Ensures all units are in metric tons CO2e.
-        """
         logging.info("Starting emissions data extraction...")
 
-        # Extract relevant lines with context, ensuring no duplicates
         relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
-        relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicate lines.
+        relevant_lines = list(dict.fromkeys(relevant_lines))
 
-        # If no relevant lines are found, log a warning and exit
         if not relevant_lines:
             logging.warning("No relevant context found for Scope 1/2 in text")
             return None
 
-        # Save extracted lines for debugging
         with open("claude_input_data.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(relevant_lines))
 
-        # Split lines into chunks suitable for Claude API
         chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
         all_results = []
 
-        # Process each chunk with Claude API
         for chunk in chunks:
             result = self._send_to_claude(chunk, company_name)
             if result:
                 all_results.append(result)
 
-        # Aggregate and return results
         return self._aggregate_results(all_results)
 
-    # Extract lines with relevant keywords and their context
     def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
-        """
-        Identifies lines containing relevant keywords (Scope 1/2) and includes surrounding lines.
-        """
-        lines = text.split('\n')  # Split text into individual lines.
+        lines = text.split('\n')
         relevant_lines = []
 
         for i, line in enumerate(lines):
-            if re.search(self.scope_pattern, line):  # Check if the line matches the scope pattern.
-                start = max(0, i - lines_before)  # Start line for context.
-                end = min(len(lines), i + lines_after + 1)  # End line for context.
+            if re.search(self.scope_pattern, line):
+                start = max(0, i - lines_before)
+                end = min(len(lines), i + lines_after + 1)
                 relevant_lines.extend(lines[start:end])
 
         return relevant_lines
 
-    # Split text into chunks for Claude API
     def _split_into_chunks(self, lines: List[str], max_chars: int) -> List[str]:
-        """
-        Splits extracted lines into chunks within Claude's input character limit.
-        """
         chunks = []
         current_chunk = []
         current_length = 0
 
         for line in lines:
-            line_length = len(line) + 1  # Include newline character.
+            line_length = len(line) + 1
             if current_length + line_length > max_chars:
-                chunks.append("\n".join(current_chunk))  # Save current chunk.
+                chunks.append("\n".join(current_chunk))
                 current_chunk = []
                 current_length = 0
             current_chunk.append(line)
             current_length += line_length
 
-        if current_chunk:  # Save any remaining lines as a chunk.
+        if current_chunk:
             chunks.append("\n".join(current_chunk))
 
         return chunks
 
-    # Send a text chunk to Claude for analysis
     def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
-        """
-        Sends a chunk of text to Claude AI for emissions data extraction.
-        """
         prompt = f"""
         Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
         Extract the following:
@@ -153,38 +121,32 @@ class EmissionsAnalyzer:
         """.strip()
 
         try:
-            response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",  # Changed back to working version
-                messages=[{"role": "user", "content": prompt}],
+            response = self.client.completions.create(
+                model="claude-3-sonnet-20240229",
+                prompt=prompt,
                 temperature=0,
-                max_tokens=4096
+                max_tokens_to_sample=4096
             )
-
-            if not response.content or not response.content[0].text:
+            
+            if not response.completion:
                 logging.warning("No content in Claude response")
                 return None
 
-            return self._parse_and_validate(response.content[0].text)
+            return self._parse_and_validate(response.completion)
 
         except Exception as e:
             logging.error(f"Error in Claude analysis: {str(e)}")
             return None
 
-    # Validate and normalize the extracted data
     def _parse_and_validate(self, content: str) -> Optional[Dict]:
-        """
-        Parses Claude's JSON response, validates it, and ensures units are in metric tons CO2e.
-        """
         try:
             data = json.loads(content)
 
-            # Check for required keys in the JSON response
             required_keys = {"current_year", "previous_years", "source_details"}
             if not all(key in data for key in required_keys):
                 logging.warning("Missing required keys in JSON response")
                 return None
 
-            # Normalize units to metric tons CO2e
             for key in ["current_year", "previous_years"]:
                 if key in data:
                     for entry in (data[key] if key == "previous_years" else [data[key]]):
@@ -198,20 +160,10 @@ class EmissionsAnalyzer:
             logging.error("Failed to parse JSON from Claude response")
             return None
 
-    # Unit conversion helper method
     def _convert_to_metric_tons(self, scope_data: Dict) -> float:
-        """
-        Converts any unit to metric tons CO2e if necessary.
-        Assumes input is already in metric tons CO2e unless otherwise stated.
-        """
-        # Placeholder: Add actual unit conversion logic if needed.
         return float(scope_data["value"])
 
-    # Aggregate results from multiple chunks
     def _aggregate_results(self, results: List[Dict]) -> Dict:
-        """
-        Combines results from multiple Claude API calls into a single output.
-        """
         combined = {
             "company": None,
             "sector": None,
@@ -231,7 +183,6 @@ class EmissionsAnalyzer:
             if not combined["source_details"]:
                 combined["source_details"] = result.get("source_details", None)
 
-        # Remove duplicate entries in previous years
         combined["previous_years"] = list({json.dumps(year): year for year in combined["previous_years"]}.values())
 
         return combined
