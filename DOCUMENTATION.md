@@ -1,81 +1,69 @@
 # Technical Documentation
 
-## Architecture Overview
+This guide covers the technical details of the Emissions Data Analyzer tool.
 
-The application consists of several key components:
+## 🏗️ Project Structure
 
-1. **Data Collection Layer**
-   - `BraveSearchClient`: Handles sustainability report search
-   - `DocumentHandler`: Processes PDF documents
-
-2. **Analysis Layer**
-   - `EmissionsAnalyzer`: Extracts and processes emissions data
-   - Data validation and normalization
-
-3. **Web Interface**
-   - Flask application with RESTful endpoints
-   - Interactive data display
-   - Download functionality
-
-## Component Details
-
-### Web Interface (src/web/)
-
-#### Routes
-
-1. **GET /** 
-   - Serves the main web interface
-   - Template: `index.html`
-
-2. **POST /analyze**
-   - Analyzes emissions data for a company
-   - Parameters:
-     ```json
-     {
-       "identifier": "company_name"
-     }
-     ```
-   - Returns analyzed emissions data
-
-### Data Processing
-
-#### Unit Handling
-1. Automatic detection of input units
-2. Conversion to metric tons CO2e
-3. Validation of unit consistency
-
-#### Data Structure
-```python
-data = {
-    'scope_1': {
-        'value': float,
-        'unit': str
-    },
-    'scope_2_market_based': {
-        'value': float,
-        'unit': str
-    },
-    'scope_2_location_based': {
-        'value': float,
-        'unit': str
-    }
-}
+```
+emissions-data-analyzer/
+├── .env                 # Your API keys (don't commit!)
+├── .env.example        # Template for .env
+├── .flaskenv           # Flask configuration
+├── requirements.txt    # Python dependencies
+└── src/
+    ├── web/           # Web interface
+    │   ├── app.py     # Main Flask application
+    │   ├── templates/ # HTML files
+    │   └── static/    # CSS, JS, etc.
+    ├── search/        # Brave Search integration
+    ├── analysis/      # Claude analysis logic
+    └── extraction/    # PDF processing
 ```
 
-## API Documentation
+## 🛠️ Setup Guide
+
+### 1. Development Environment
+
+```bash
+# Required files for Python packaging
+touch src/__init__.py
+touch src/web/__init__.py
+touch src/search/__init__.py
+touch src/analysis/__init__.py
+touch src/extraction/__init__.py
+
+# Required environment files
+touch .env       # API keys
+touch .flaskenv  # Flask config
+```
+
+### 2. Environment Files
+
+**.env**
+```bash
+CLAUDE_API_KEY=your_claude_api_key_here
+BRAVE_API_KEY=your_brave_api_key_here
+```
+
+**.flaskenv**
+```bash
+FLASK_APP=src.web.app
+FLASK_ENV=development  # Change to 'production' for deployment
+```
+
+## 🌐 API Endpoints
 
 ### POST /analyze
-
-Analyze emissions data for a company.
+Analyze emissions for a company.
 
 **Request:**
 ```json
 {
-  "identifier": "company_name"
+  "identifier": "company_name"  // Required
 }
 ```
 
-**Response:**
+**Success Response (200):**
 ```json
 {
   "company": "string",
@@ -91,86 +79,114 @@ Analyze emissions data for a company.
       "unit": "string"
     }
   },
-  "processed_at": "string (ISO datetime)"
+  "processed_at": "ISO datetime"
 }
 ```
 
-## Error Handling
+**Error Responses:**
+- 400: Missing company name
+- 404: No report/data found
+- 500: Processing error
 
-### Common Error Codes
+## 🚦 Error Handling
 
-1. **400 Bad Request**
-   - Missing company name
+The application uses HTTP status codes and JSON responses for errors:
 
-2. **404 Not Found**
-   - No sustainability report found
-   - No emissions data found
-
-3. **500 Internal Server Error**
-   - PDF processing errors
-   - Network errors
-   - Analysis errors
-
-### Error Response Format
-```json
+```python
+# Example error response
 {
-  "error": "Error message description"
+  "error": "No sustainability report found for Company X"
 }
 ```
 
-## Running the Application
+Common error scenarios:
+1. PDF not machine-readable
+2. No emissions data found
+3. Network timeout
+4. API rate limits
 
-### Development Mode
+## 🖥️ Running in Production
+
+1. **Using Gunicorn** (Recommended)
+   ```bash
+   pip install gunicorn
+   gunicorn -w 4 'src.web.app:app'
+   ```
+
+2. **Using Docker**
+   ```bash
+   docker build -t emissions-analyzer .
+   docker run -p 5000:5000 emissions-analyzer
+   ```
+
+## 🔍 How It Works
+
+1. **Search Phase**
+   - Uses Brave Search API to find sustainability reports
+   - Filters for PDF documents
+   - Ranks by relevance and date
+
+2. **Extraction Phase**
+   - Downloads PDF
+   - Converts to text
+   - Preserves table structure
+
+3. **Analysis Phase**
+   - Claude AI identifies emissions data
+   - Normalizes units
+   - Validates data consistency
+
+## 🧪 Testing
+
 ```bash
-# Set environment variables
-export FLASK_APP=src/web/app.py
-export FLASK_ENV=development
+# Run all tests
+python -m pytest
 
-# Run Flask
-flask run
+# Run specific test file
+python -m pytest tests/test_analyzer.py
+
+# Run with coverage
+python -m pytest --cov=src
 ```
 
-### Production Mode
-```bash
-# Using gunicorn (if installed)
-gunicorn -w 4 'src.web.app:app'
-```
+## 📊 Data Handling
 
-## Performance Considerations
+### Unit Conversions
+All data is converted to metric tons CO2e. Supported input units:
+- Metric tons (tonnes) CO2e
+- Short tons CO2e
+- Kilograms CO2e
+- Million metric tons CO2e
 
-1. **Caching**
-   - PDF processing results cached
-   - API responses cached where appropriate
+### Data Validation
+- Checks for realistic ranges
+- Validates year consistency
+- Verifies unit conversions
 
-2. **Memory Management**
-   - Large PDF handling
-   - Temporary file cleanup
+## 🔐 Security Notes
 
-## Security Considerations
+1. **API Keys**
+   - Never commit .env files
+   - Rotate keys regularly
+   - Use environment variables
 
-1. **Input Validation**
-   - All user inputs sanitized
-   - URL parameters checked
+2. **Input Validation**
+   - All user input is sanitized
+   - URL parameters are validated
+   - File uploads are restricted
 
-2. **Error Messages**
-   - Limited detail in production
-   - No sensitive data exposure
+3. **Error Messages**
+   - Production errors hide implementation details
+   - Logging excludes sensitive data
 
-## Project Structure
+## 🚀 Performance Tips
 
-```
-.
-├── src/
-│   ├── web/                    # Web interface
-│   │   ├── app.py              # Flask application
-│   │   ├── templates/          # HTML templates
-│   │   │   └── index.html      # Main page
-│   │   └── static/             # Static assets
-│   │       └── js/             # JavaScript files
-│   │           └── app.js      # Frontend logic
-│   ├── search/                 # Search functionality
-│   ├── extraction/             # PDF extraction
-│   └── analysis/               # Data analysis
-├── requirements.txt            # Python dependencies
-└── .env                        # Environment variables
-```
+1. **Memory Usage**
+   - Large PDFs are processed in chunks
+   - Temporary files are cleaned up
+   - Results are cached when possible
+
+2. **API Optimization**
+   - Requests are rate-limited
+   - Responses are cached
+   - Batch operations where possible
