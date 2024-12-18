@@ -2,3 +2,7 @@ anthropic>=0.42.0
 python-dotenv
 requests
 pdfplumber
+Flask>=2.0.0
+gunicorn
+python-dateutil
+tqdm
