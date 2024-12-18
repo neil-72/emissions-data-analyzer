@@ -3,10 +3,11 @@
 A tool to automatically extract Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search and Claude APIs.
 
 ## Key Features
-1. Smart section targeting to locate emissions data in complex reports, prioritizing relevant sections and keywords.
-2. Robust validation to ensure extracted data falls within typical corporate ranges.
-3. Support for multiple report formats, including PDF and web-based reports.
-4. Detailed logging for debugging and verification of results.
+	1.	Extracts relevant sections of reports based on keywords like “Scope 1” and “Scope 2” and sends context-rich chunks to Claude for analysis.
+	2.	Removes duplicate lines for cleaner data processing.
+	3.	Outputs extracted data in JSON format with details on emissions values, years, and context.
+	4.	Saves intermediate files (claude_input_data.txt) for inspection of processed text.
+	5.	Validates and aggregates results across multiple chunks of text.
 
 ## Setup
 
@@ -39,48 +40,73 @@ BRAVE_API_KEY=your_brave_api_key
 python -m src.main
 ```
 
-## Data Validation
-The system validates emissions data against typical corporate ranges:
-- Scope 1: 100 - 10,000,000 metric tons CO2e
-- Scope 2: 1,000 - 20,000,000 metric tons CO2e
+Data Extraction Process
+	1.	Preprocessing:
+	•	Extracts lines around relevant keywords (Scope 1 or Scope 2) with configurable context (default: 15 lines above and below).
+	•	Saves processed text to claude_input_data.txt for verification.
+	2.	Analysis:
+	•	Breaks down long text into manageable chunks (30,000 characters).
+	•	Sends each chunk to Claude for extracting emissions data.
+	3.	Output:
+	•	Aggregates results into a single JSON file in the output directory.
 
-## Output Format
-```json
+Output Format
+
 {
     "company": "Company Name",
     "report_url": "URL to sustainability report",
     "report_year": 2024,
     "emissions_data": {
-        "scope_1": {
-            "value": 1000000,
-            "unit": "metric tons CO2e",
-            "year": 2023
+        "current_year": {
+            "year": 2023,
+            "scope_1": {
+                "value": 144960,
+                "unit": "metric tons CO2e",
+                "measurement": "market-based"
+            },
+            "scope_2_market_based": {
+                "value": 393134,
+                "unit": "metric tons CO2e"
+            },
+            "scope_2_location_based": {
+                "value": 6381250,
+                "unit": "metric tons CO2e"
+            }
         },
-        "scope_2": {
-            "value": 2000000,
-            "unit": "metric tons CO2e",
-            "year": 2023
-        },
-        "source_location": "Description of where data was found in report"
+        "previous_years": [
+            {
+                "year": 2022,
+                "scope_1": {
+                    "value": 139413,
+                    "unit": "metric tons CO2e"
+                },
+                "scope_2_market_based": {
+                    "value": 288029,
+                    "unit": "metric tons CO2e"
+                },
+                "scope_2_location_based": {
+                    "value": 6381250,
+                    "unit": "metric tons CO2e"
+                }
+            }
+        ],
+        "source_details": {
+            "location": "Page 25",
+            "context": "The emissions data was found in the environmental metrics section."
+        }
     }
-}
-```
+}Notes
+	1.	Does not convert units automatically; the tool assumes values are in metric tons CO2e.
+	2.	Sector identification is derived using keywords or left as null if insufficient information is present.
+	3.	The tool works only with official sustainability reports in PDF format.
 
-## Target Sections
+Limitations
+	•	Requires valid API keys for Brave Search and Claude.
+	•	Text extraction depends on report formatting and may miss complex tabular data.
+	•	Sector identification may not always be accurate and relies on report context.
 
-The system specifically looks for emissions data in:
-- Greenhouse Gas Emissions sections
-- Climate Change sections
-- Environmental Data tables
-- ESG metrics and performance data
-- GRI/SASB indices
+See DOCUMENTATION.md for technical details.
 
-## Notes
 
-1. Only searches for official company sustainability reports in PDF format.
-2. Prioritizes the most recent data (2024, then 2023).
-3. Results are saved to the `output` directory.
-4. Includes validation of data ranges and formats.
-5. Employs multiple fallback strategies if primary data extraction fails.
 
-See [DOCUMENTATION.md](DOCUMENTATION.md) for technical details.
+
