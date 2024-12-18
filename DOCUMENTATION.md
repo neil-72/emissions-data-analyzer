@@ -1,40 +1,47 @@
 # Technical Documentation
 
-## Project Structure
+## Architecture Overview
 
-```
-emissions-data-analyzer/
-├── .env                  # API keys (not in repo)
-├── .env.example         # API key template
-├── .flaskenv            # Flask configuration
-├── .gitignore           # Git ignore rules
-├── README.md            # Project overview
-├── DOCUMENTATION.md     # Technical details
-├── requirements.txt     # Python dependencies
-└── src/
-    ├── __init__.py      # Makes src a package
-    ├── main.py          # CLI entry point
-    ├── web/             # Web interface
-    │   ├── __init__.py  # Makes web a package
-    │   ├── app.py       # Flask application
-    │   ├── templates/   # HTML templates
-    │   └── static/      # Static assets
-    ├── search/          # Search functionality
-    │   ├── __init__.py
-    │   └── brave_search.py
-    ├── extraction/      # PDF handling
-    │   ├── __init__.py
-    │   └── pdf_handler.py
-    └── analysis/        # Data analysis
-        ├── __init__.py
-        └── claude_analyzer.py
-```
+The application consists of several key components:
 
-## API Documentation
+1. **Data Collection Layer**
+   - `BraveSearchClient`: Handles sustainability report search
+   - `DocumentHandler`: Processes PDF documents
 
-### POST /analyze
+2. **Analysis Layer**
+   - `EmissionsAnalyzer`: Extracts and processes emissions data
+   - Data validation and normalization
 
-Analyzes emissions data for a specified company.
+3. **Web Interface**
+   - Flask application with RESTful endpoints
+   - Interactive data display
+   - Download functionality
+
+## Component Details
+
+### Web Interface (src/web/)
+
+#### Routes
+
+1. **GET /** 
+   - Serves the main web interface
+   - Template: `index.html`
+
+2. **POST /analyze**
+   - Analyzes emissions data for a company
+   - Parameters:
+     ```json
+     {
+       "identifier": "company_name"
+     }
+     ```
+   - Returns analyzed emissions data
+
+### API Documentation
+
+#### POST /analyze
+
+Analyze emissions data for a specified company.
 
 **Request Format:**
 ```json
@@ -46,24 +53,49 @@ Analyzes emissions data for a specified company.
 **Success Response (200):**
 ```json
 {
-  "company": "string",
-  "report_url": "string",
-  "report_year": number,
+  "company": "Nvidia",
   "emissions_data": {
-    "scope_1": {
-      "value": number,
-      "unit": "string"
+    "company": "Nvidia",
+    "current_year": {
+      "scope_1": {
+        "unit": "metric tons CO2e",
+        "value": 14390
+      },
+      "scope_2_location_based": {
+        "unit": "metric tons CO2e",
+        "value": 178087
+      },
+      "scope_2_market_based": {
+        "unit": "metric tons CO2e",
+        "value": 40555
+      },
+      "year": 2024
     },
-    "scope_2_market_based": {
-      "value": number,
-      "unit": "string"
-    },
-    "scope_2_location_based": {
-      "value": number,
-      "unit": "string"
+    "previous_years": [
+      {
+        "scope_1": {
+          "unit": "metric tons CO2e",
+          "value": 12346
+        },
+        "scope_2_location_based": {
+          "unit": "metric tons CO2e",
+          "value": 142909
+        },
+        "scope_2_market_based": {
+          "unit": "metric tons CO2e",
+          "value": 60671
+        },
+        "year": 2023
+      }
+    ],
+    "source_details": {
+      "context": "The emissions data was found in tables and text across multiple pages...",
+      "location": "Pages 29-32, 39-40"
     }
   },
-  "processed_at": "string (ISO datetime)"
+  "processed_at": "2024-12-18T23:28:50.305280",
+  "report_url": "https://example.com/sustainability-report-2024.pdf",
+  "report_year": 2024
 }
 ```
 
@@ -90,66 +122,21 @@ Analyzes emissions data for a specified company.
    {"error": "Error processing PDF document"}
    ```
 
-## Development Setup
+### Data Processing
 
-### Environment Files
+#### Unit Handling
+1. Automatic detection of input units
+2. Conversion to metric tons CO2e
+3. Validation of unit consistency
 
-1. **.env**
-   ```bash
-   CLAUDE_API_KEY=your_claude_api_key
-   BRAVE_API_KEY=your_brave_api_key
-   ```
+#### Data Structure
 
-2. **.flaskenv**
-   ```bash
-   FLASK_APP=src.web.app
-   FLASK_ENV=development
-   ```
-
-### Running Development Server
-```bash
-# From project root
-flask run --debug
-```
-
-### Production Deployment
-
-1. **Using Gunicorn**
-   ```bash
-   pip install gunicorn
-   gunicorn -w 4 'src.web.app:app'
-   ```
-
-2. **Environment Variables**
-   ```bash
-   export FLASK_ENV=production
-   export FLASK_DEBUG=0
-   ```
-
-## Data Processing
-
-### Unit Conversions
-
-Supported input units:
-- Metric tons CO2e (tCO2e)
-- Million metric tons CO2e (MtCO2e)
-- Kilograms CO2e (kgCO2e)
-- Short tons CO2e
-- Kilowatts (converted using emission factors)
-
-All values are converted to metric tons CO2e for consistency.
-
-### Data Validation
-
-1. **Range Validation**
-   - Values must be positive
-   - Upper limits based on company size
-   - Year validation against report date
-
-2. **Unit Consistency**
-   - All final values in metric tons CO2e
-   - Automatic unit detection and conversion
-   - Validation of conversion accuracy
+The emissions data structure includes:
+- Current year emissions (Scope 1, Scope 2)
+- Historical emissions data when available
+- Source document details and context
+- Unit standardization to metric tons CO2e
+- Timestamps and processing metadata
 
 ## Error Handling
 
