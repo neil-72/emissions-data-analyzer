@@ -44,7 +44,7 @@ class EmissionsTracker:
             text_length = len(text_content)
             logging.info(f"Successfully extracted text ({text_length:,} characters)")
 
-            if text_length < 1000:
+            if text_length < 50:
                 logging.warning("Extracted text suspiciously short")
                 return None
 
