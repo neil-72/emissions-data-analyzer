@@ -3,7 +3,9 @@ import json
 import logging
 from typing import Dict, Optional, List
 from anthropic import Anthropic
+from termcolor import colored
 from ..config import CLAUDE_API_KEY
+
 
 class EmissionsAnalyzer:
     def __init__(self):
@@ -14,7 +16,7 @@ class EmissionsAnalyzer:
         """Extract emissions data using Claude."""
         logging.info("Starting emissions data extraction...")
 
-        # Extract relevant lines with context and avoid duplicates
+        # Extract relevant lines with context and remove duplicates
         relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
         relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicates
         if not relevant_lines:
@@ -29,13 +31,22 @@ class EmissionsAnalyzer:
         chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
         all_results = []
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            # Write each chunk to a file for inspection
+            chunk_filename = f"claude_input_chunk_{i + 1}.txt"
+            with open(chunk_filename, "w", encoding="utf-8") as f:
+                f.write(chunk)
+
             result = self._send_to_claude(chunk, company_name)
             if result:
                 all_results.append(result)
 
         # Aggregate results from all chunks
-        return self._aggregate_results(all_results)
+        final_results = self._aggregate_results(all_results)
+
+        # Print formatted output to terminal
+        self._pretty_print_output(final_results)
+        return final_results
 
     def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
         """Extract lines containing relevant keywords and include surrounding context."""
@@ -87,18 +98,30 @@ Return ONLY this JSON format:
       "unit": "metric tons CO2e",
       "measurement": "<market-based or location-based or unknown>"
     }},
-    "scope_2": {{
+    "scope_2_market_based": {{
       "value": <number or null>,
-      "unit": "metric tons CO2e",
-      "measurement": "<market-based or location-based or unknown>"
+      "unit": "metric tons CO2e"
+    }},
+    "scope_2_location_based": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e"
     }}
   }},
   "previous_years": [
     {{
       "year": <YYYY or null>,
-      "scope_1": <number or null>,
-      "scope_2_market_based": <number or null>,
-      "scope_2_location_based": <number or null>
+      "scope_1": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }},
+      "scope_2_market_based": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }},
+      "scope_2_location_based": {{
+        "value": <number or null>,
+        "unit": "metric tons CO2e"
+      }}
     }}
   ],
   "source_details": {{
@@ -157,3 +180,13 @@ Text to analyze:
                 combined["sector"] = result.get("sector", None)
 
         return combined
+
+    def _pretty_print_output(self, data: Dict):
+        """Format and display the output in the terminal."""
+        if not data:
+            print(colored("No data to display.", "red"))
+            return
+
+        formatted_json = json.dumps(data, indent=4)
+        print(colored(f"Results for {data.get('company', 'Unknown Company')}:", "blue", attrs=["bold"]))
+        print(colored(formatted_json, "green"))
