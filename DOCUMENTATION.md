@@ -1,75 +1,58 @@
-# Technical Documentation
+# Emissions Data Analyzer - Technical Documentation
 
-## Architecture Overview
+## Overview
 
-The application consists of several key components:
+This tool extracts Scope 1 and Scope 2 carbon emissions data from company sustainability reports using Brave Search for report discovery and Claude AI for data extraction.
 
-1. **Data Collection Layer**
-   - `BraveSearchClient`: Handles API-based sustainability report search
-   - `ISINLookup`: Manages ISIN to company name resolution
-   - `DocumentHandler`: Processes PDF documents and text extraction
+## System Components
 
-2. **Analysis Layer**
-   - `EmissionsAnalyzer`: Extracts and processes emissions data
-   - Data validation and normalization
-   - Unit conversion handling
+### 1. Search Module (src/search/brave_search.py)
+- **Purpose**: Locate company sustainability reports via the Brave Search API
+- **Key Features**:
+  - Searches for sustainability reports, ESG reports, and CDP disclosures
+  - Implements multiple search strategies to improve result relevance
+  - ISIN lookup and validation for accurate company identification
+- **Main Class**: BraveSearchClient
+  - search_sustainability_report(): Finds the most relevant sustainability report
 
-3. **Web Interface**
-   - Flask application with RESTful endpoints
-   - Real-time validation and preview
-   - Interactive data display
-   - Download functionality
+### 2. Document Processing (src/extraction/pdf_handler.py)
+- **Purpose**: Extract text and structure from sustainability reports
+- **Key Features**:
+  - Handles PDFs with table recognition and text extraction
+  - Searches for keywords and patterns related to emissions
+  - Includes fallback methods for inaccessible documents
+- **Main Class**: DocumentHandler
+  - get_document_content(): Extracts structured text from PDF files
+  - extract_text_from_pdf(): Handles raw PDF processing
 
-## Component Details
+### 3. Data Analysis (src/analysis/claude_analyzer.py)
+- **Purpose**: Extract emissions data from report text using Claude AI
+- **Key Features**:
+  - Targets specific keywords and contexts related to emissions
+  - Supports structured extraction of current and historical data
+  - Generates JSON-formatted output with source attribution
+- **Main Class**: EmissionsAnalyzer
+  - extract_emissions_data(): Main method for extracting emissions data
 
-### Web Interface
-
-#### Routes
-
-1. **GET /** 
-   - Serves the main web interface
-   - Template: `index.html`
-
-2. **POST /analyze**
-   - Analyzes emissions data for a company
-   - Parameters:
+### 4. Web Interface
+- **Purpose**: Provide REST API and user interface for data access
+- **Routes**:
+  1. **GET /**
+     - Serves the main web interface
+     - Template: `index.html`
+  2. **POST /analyze**
      ```json
      {
        "identifier": "string",
        "id_type": "company|isin"
      }
      ```
-
-3. **GET /validate-isin/<isin>**
-   - Validates ISIN and returns company info
-   - Returns:
-     ```json
-     {
-       "valid": boolean,
-       "company_name": "string",
-       "error": "string"
-     }
-     ```
-
-### ISIN Lookup
-
-The `ISINLookup` class provides:
-1. ISIN format validation
-2. Company name resolution via Yahoo Finance
-3. Caching for performance
-4. Error handling and reporting
-
-#### Validation Rules
-- 12 characters long
-- First 2 characters are letters (country code)
-- Remaining 10 characters are alphanumeric
-- Valid checksum using Luhn algorithm
+  3. **GET /validate-isin/<isin>**
+     - Validates ISIN and returns company info
 
 ## API Documentation
 
 ### POST /analyze
-
-Analyze emissions data for a company.
 
 **Request:**
 ```json
@@ -128,133 +111,88 @@ Analyze emissions data for a company.
 }
 ```
 
-### GET /validate-isin/{isin}
+## Target Sections
 
-Validate ISIN and get company information.
+### Primary Sections
+The system looks for emissions data in the following report areas:
+- Greenhouse Gas Emissions
+- Climate Change Commitments
+- Environmental Data Tables
+- ESG Metrics and Performance
 
-**Parameters:**
-- `isin`: ISIN to validate (path parameter)
-
-**Response:**
-```json
-{
-  "valid": boolean,
-  "company_name": "string",
-  "error": "string"
-}
-```
+### Table Indicators
+The system prioritizes tables containing:
+- "Scope 1" and "Scope 2" labels
+- Units like "tCO2e" or "MTCO2e"
+- Year-based columns adjacent to numeric data
 
 ## Error Handling
 
-### Common Error Codes
+### PDF Access Issues
+1. Retries failed downloads with exponential backoff
+2. Attempts alternative URLs for inaccessible reports
+3. Logs failed attempts for further investigation
 
+### Data Extraction Issues
+1. Extracts relevant sections when table parsing fails
+2. Ensures fallback strategies for unstructured data
+3. Uses multiple passes for improved accuracy
+
+### Common Error Codes
 1. **400 Bad Request**
    - Missing required parameters
    - Invalid ISIN format
-   ```json
-   {"error": "Invalid ISIN format"}
-   ```
-
 2. **404 Not Found**
    - Company not found
    - No sustainability report found
-   - No emissions data found
-   ```json
-   {"error": "No sustainability report found"}
-   ```
-
 3. **500 Internal Server Error**
    - PDF processing errors
    - Network errors
-   - Analysis errors
-   ```json
-   {"error": "Error processing PDF document"}
-   ```
+
+## Known Limitations
+1. OCR is not implemented for scanned PDFs
+2. Sector identification relies on contextual data
+3. Assumes data is in metric tons CO2e
 
 ## Running the Application
 
 ### Development Mode
 ```bash
-# Set environment variables
 export FLASK_APP=src/web/app.py
 export FLASK_ENV=development
-
-# Run Flask
 flask run
 ```
 
 ### Production Mode
 ```bash
-# Using gunicorn
 gunicorn -w 4 'src.web.app:app'
 ```
 
-## Testing
+## Maintenance
 
-### Unit Tests
-Run unit tests with:
-```bash
-python -m pytest tests/
-```
+### Regular Tasks
+1. Update search terms for evolving report formats
+2. Monitor API usage limits
+3. Test with new reports for compatibility
 
-### Sample Test Cases
-1. ISIN Validation
-   - Valid ISIN: US0378331005 (Apple Inc)
-   - Invalid format: ABC123
-   - Invalid checksum: US0378331004
-
-2. Emissions Data
-   - Complete data (all scopes)
-   - Historical data validation
-   - Source attribution verification
-
-## Performance Optimization
-
+### Performance Optimization
 1. **Caching**
    - ISIN lookups cached
    - PDF processing results cached
-   - API responses cached where appropriate
-
 2. **Rate Limiting**
    - API requests throttled
-   - ISIN validation rate limited
    - PDF downloads controlled
-
 3. **Memory Management**
    - Large PDF handling
    - Temporary file cleanup
-   - Cache size limits
 
-## Security Considerations
-
+### Security
 1. **API Key Management**
    - Store keys in environment variables
    - Regular key rotation
-   - Rate limiting implementation
-
 2. **Input Validation**
    - Sanitize all user inputs
    - ISIN format strictly validated
-   - URL parameters checked
-
 3. **Error Messages**
    - Limited detail in production
    - No sensitive data exposure
-   - Logging properly configured
-
-## Maintenance
-
-1. **Logging**
-   - Application events logged
-   - Error tracking
-   - Performance monitoring
-
-2. **Monitoring**
-   - API endpoint health
-   - Cache performance
-   - Error rates
-
-3. **Updates**
-   - Dependency management
-   - Security patches
-   - Feature updates
