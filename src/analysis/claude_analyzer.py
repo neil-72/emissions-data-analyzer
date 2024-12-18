@@ -154,7 +154,7 @@ class EmissionsAnalyzer:
 
         try:
             response = self.client.messages.create(
-                model="claude-2.1",  # Changed back to original model
+                model="claude-3-sonnet-20240229",  # Changed back to working version
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=4096
