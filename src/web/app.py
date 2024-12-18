@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
-from ..search.brave_search import BraveSearchClient
-from ..analysis.claude_analyzer import EmissionsAnalyzer
-from ..extraction.pdf_handler import DocumentHandler
+from src.search.brave_search import BraveSearchClient
+from src.analysis.claude_analyzer import EmissionsAnalyzer
+from src.extraction.pdf_handler import DocumentHandler
 import json
 from datetime import datetime
 
