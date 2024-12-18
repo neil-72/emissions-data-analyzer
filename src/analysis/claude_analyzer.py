@@ -1,70 +1,114 @@
 import re
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from anthropic import Anthropic
 from ..config import CLAUDE_API_KEY
 
 class EmissionsAnalyzer:
     def __init__(self):
         self.client = Anthropic(api_key=CLAUDE_API_KEY)
-        # Keep it simple - just check for scope data
         self.scope_pattern = r'(?i)scope\s*[12]'
 
     def extract_emissions_data(self, text: str, company_name: str = None) -> Optional[Dict]:
         """Extract emissions data using Claude."""
         logging.info("Starting emissions data extraction...")
 
-        # Basic check for scope data
-        if not re.search(self.scope_pattern, text):
-            logging.warning("No scope 1/2 mentions found in text")
+        # Extract relevant lines with context and avoid duplicates
+        relevant_lines = self._extract_lines_with_context(text, lines_before=15, lines_after=15)
+        relevant_lines = list(dict.fromkeys(relevant_lines))  # Remove duplicates
+        if not relevant_lines:
+            logging.warning("No relevant context found for Scope 1/2 in text")
             return None
 
-        # Keep text within Claude's context window
-        sections = text[:30000]  # Conservative limit for context
-        
+        # Write the relevant lines to a file for inspection
+        with open("claude_input_data.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(relevant_lines))
+
+        # Split into chunks if text exceeds Claude's input limit
+        chunks = self._split_into_chunks(relevant_lines, max_chars=30000)
+        all_results = []
+
+        for chunk in chunks:
+            result = self._send_to_claude(chunk, company_name)
+            if result:
+                all_results.append(result)
+
+        # Aggregate results from all chunks
+        return self._aggregate_results(all_results)
+
+    def _extract_lines_with_context(self, text: str, lines_before: int, lines_after: int) -> List[str]:
+        """Extract lines containing relevant keywords and include surrounding context."""
+        lines = text.split('\n')
+        relevant_lines = []
+        for i, line in enumerate(lines):
+            if re.search(self.scope_pattern, line):
+                start = max(0, i - lines_before)
+                end = min(len(lines), i + lines_after + 1)
+                relevant_lines.extend(lines[start:end])
+        return relevant_lines
+
+    def _split_into_chunks(self, lines: List[str], max_chars: int) -> List[str]:
+        """Split the lines into chunks that fit within the character limit."""
+        chunks = []
+        current_chunk = []
+        current_length = 0
+
+        for line in lines:
+            line_length = len(line) + 1  # Add 1 for newline
+            if current_length + line_length > max_chars:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_length = 0
+            current_chunk.append(line)
+            current_length += line_length
+
+        if current_chunk:
+            chunks.append("\n".join(current_chunk))
+        return chunks
+
+    def _send_to_claude(self, text: str, company_name: str = None) -> Optional[Dict]:
+        """Send a chunk of text to Claude for analysis."""
         prompt = f"""
-Analyze this sustainability report{f' for {company_name}' if company_name else ''}. 
-Find and extract:
-1. Most recent Scope 1 & 2 emissions data (with reporting year)
-2. Previous years' Scope 1 & 2 data
-3. Whether Scope 2 is market-based or location-based
-4. Context of where data was found
-{f'5. Identify {company_name}\'s sector based on your knowledge' if company_name else ''}
+Analyze this sustainability report{f' for {company_name}' if company_name else ''}.
+Extract the following:
+1. Most recent Scope 1 and Scope 2 emissions data, with reporting year and measurement type (market-based or location-based).
+2. Scope 1 and Scope 2 data for the previous two years.
+3. Context of where the data was found.
 
-Some data might appear in tables, some in text. Convert all units to metric tons CO2e.
-For Scope 2, specify if it's market-based or location-based when possible.
-
-Return ONLY this exact JSON format with NO other text:
+Return ONLY this JSON format:
 {{
-  "scope_1": {{
-    "value": <number or null>,
-    "unit": "metric tons CO2e",
+  "company": "{company_name}",
+  "sector": "<sector or null>",
+  "current_year": {{
     "year": <YYYY or null>,
-    "year_type": "<fiscal or calendar>"
-  }},
-  "scope_2": {{
-    "value": <number or null>,
-    "unit": "metric tons CO2e",
-    "year": <YYYY or null>,
-    "measurement": "<market-based or location-based or unknown>"
-  }},
-  "source_details": {{
-    "location": "<where found>",
-    "context": "<relevant context>"
+    "scope_1": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e",
+      "measurement": "<market-based or location-based or unknown>"
+    }},
+    "scope_2": {{
+      "value": <number or null>,
+      "unit": "metric tons CO2e",
+      "measurement": "<market-based or location-based or unknown>"
+    }}
   }},
   "previous_years": [
     {{
-      "year": <YYYY>,
-      "scope_1": <number>,
-      "scope_2": <number>
+      "year": <YYYY or null>,
+      "scope_1": <number or null>,
+      "scope_2_market_based": <number or null>,
+      "scope_2_location_based": <number or null>
     }}
   ],
-  "sector": "<sector or null>"
+  "source_details": {{
+    "location": "<where found>",
+    "context": "<relevant context>"
+  }}
 }}
 
 Text to analyze:
-{sections}
+{text}
 """.strip()
 
         try:
@@ -74,13 +118,12 @@ Text to analyze:
                 temperature=0,
                 max_tokens=4096
             )
-            
+
             if not response.content or not response.content[0].text:
                 logging.warning("No content in Claude response")
                 return None
 
-            data = self._parse_and_validate(response.content[0].text)
-            return data
+            return self._parse_and_validate(response.content[0].text)
 
         except Exception as e:
             logging.error(f"Error in Claude analysis: {str(e)}")
@@ -90,39 +133,27 @@ Text to analyze:
         """Parse and validate Claude's JSON response."""
         try:
             data = json.loads(content)
-            
-            # Basic validation
-            required_keys = {"scope_1", "scope_2", "source_details", "previous_years"}
-            if not all(k in data for k in required_keys):
-                logging.warning("Missing required keys in JSON response")
-                return None
-
-            # Normalize values
-            for scope in ["scope_1", "scope_2"]:
-                if data[scope].get("value"):
-                    try:
-                        # Handle number formatting
-                        val_str = str(data[scope]["value"]).replace(',', '')
-                        data[scope]["value"] = float(val_str)
-                    except (ValueError, TypeError):
-                        data[scope]["value"] = None
-
-            # Validate previous years
-            if data["previous_years"]:
-                cleaned_years = []
-                for entry in data["previous_years"]:
-                    if isinstance(entry.get("year"), int) and entry.get("scope_1") is not None:
-                        try:
-                            # Clean number formatting
-                            entry["scope_1"] = float(str(entry["scope_1"]).replace(',', ''))
-                            entry["scope_2"] = float(str(entry["scope_2"]).replace(',', ''))
-                            cleaned_years.append(entry)
-                        except (ValueError, TypeError):
-                            continue
-                data["previous_years"] = cleaned_years
-
             return data
-
         except json.JSONDecodeError:
             logging.error("Failed to parse JSON from Claude response")
             return None
+
+    def _aggregate_results(self, results: List[Dict]) -> Dict:
+        """Combine results from multiple chunks."""
+        combined = {
+            "current_year": {},
+            "previous_years": [],
+            "source_details": None,
+            "sector": None
+        }
+
+        for result in results:
+            if not combined["current_year"]:
+                combined["current_year"] = result.get("current_year", {})
+            combined["previous_years"].extend(result.get("previous_years", []))
+            if not combined["source_details"]:
+                combined["source_details"] = result.get("source_details", None)
+            if not combined["sector"]:
+                combined["sector"] = result.get("sector", None)
+
+        return combined
