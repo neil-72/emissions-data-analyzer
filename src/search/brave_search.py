@@ -1,9 +1,13 @@
-import json
+import requests
 import logging
-import os
+import re
 from typing import Dict, Optional
-from .search.brave_search import BraveSearchClient
-from .extraction.pdf_handler import DocumentHandler
+from ..config import (
+    BRAVE_API_KEY, 
+    SEARCH_YEARS, 
+    MAX_RESULTS_PER_SEARCH
+)
+from ..extraction.pdf_handler import DocumentHandler
 from .analysis.claude_analyzer import EmissionsAnalyzer
 from .config import DEFAULT_OUTPUT_DIR
 
