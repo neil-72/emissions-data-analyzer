@@ -1,104 +1,140 @@
-import requests
+import json
 import logging
-import re
+import os
 from typing import Dict, Optional
-from ..config import (
-    BRAVE_API_KEY, 
-    SEARCH_YEARS, 
-    MAX_RESULTS_PER_SEARCH
-)
-from ..extraction.pdf_handler import DocumentHandler
+from .search.brave_search import BraveSearchClient
+from .extraction.pdf_handler import DocumentHandler
+from .analysis.claude_analyzer import EmissionsAnalyzer
+from .config import DEFAULT_OUTPUT_DIR
 
-class BraveSearchClient:
+class EmissionsTracker:
+    """# Main class for tracking and analyzing company emissions data
+    # Handles the end-to-end process of:
+    # 1. Finding sustainability reports via Brave Search
+    # 2. Extracting text content from PDFs
+    # 3. Using Claude to analyze emissions data
+    # 4. Saving structured results as JSON
+    """
     def __init__(self):
-        self.api_key = BRAVE_API_KEY
-        self.base_url = "https://api.search.brave.com/res/v1/web/search"
-        self.headers = {
-            "Accept": "application/json",
-            "X-Subscription-Token": self.api_key
-        }
-        self.document_handler = DocumentHandler()
-        
-        # Keep the simple but effective scope 1 pattern
-        self.scope_1_pattern = re.compile(r'(?i)scope[\s\-_]*1')
-        
-        # Add basic negative patterns to filter obvious non-reports
-        self.negative_patterns = [
-            'proxy statement',
-            '10-k',
-            '10k',
-            'financial results'
-        ]
+        try:
+            # Core components that handle different parts of the process
+            self.search_client = BraveSearchClient()  # Finds reports using Brave Search
+            self.analyzer = EmissionsAnalyzer()       # Analyzes text using Claude
+            self.document_handler = DocumentHandler()  # Handles PDF extraction
+            os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
+        except Exception as e:
+            logging.error(f"Failed to initialize EmissionsTracker: {str(e)}")
+            raise
 
-    def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
-        """Search for a sustainability report PDF, preferring more recent years and ensuring 'scope 1' mention."""
-        if not company_name.strip():
-            logging.error("Empty company name provided")
+    def process_company(self, company_name: str) -> Optional[Dict]:
+        """# Process a single company to extract emissions data
+        # Flow:
+        # 1. Search for latest sustainability report
+        # 2. Extract PDF text content
+        # 3. Analyze for emissions data
+        # 4. Structure and save results
+        """
+        if not company_name or not company_name.strip():
+            logging.error("Invalid company name provided")
             return None
 
-        for year in SEARCH_YEARS:
-            logging.info(f"Searching for {company_name} {year} sustainability report...")
-            
-            # Keep the same effective search terms
-            search_terms = [
-                f"{company_name} sustainability report {year} filetype:pdf",
-                f"{company_name} corporate responsibility report {year} filetype:pdf",
-                f"{company_name} ESG report {year} filetype:pdf"  # Added ESG variation
-            ]
+        try:
+            logging.info(f"Starting analysis for {company_name}")
 
-            for search_term in search_terms:
-                try:
-                    response = requests.get(
-                        self.base_url,
-                        headers=self.headers,
-                        params={"q": search_term, "count": MAX_RESULTS_PER_SEARCH},
-                        timeout=30  # Add timeout
-                    )
-                    response.raise_for_status()
-                    results = response.json()
+            report_data = self.search_client.search_sustainability_report(company_name)
+            if not report_data:
+                logging.warning("No sustainability report found")
+                return None
 
-                    if results.get("web", {}).get("results"):
-                        for result_data in results["web"]["results"]:
-                            raw_title = result_data.get("title", "")
-                            url = result_data["url"]
-                            title = raw_title.strip().lower()
+            logging.info(f"Found report for {company_name} from year {report_data['year']}")
+            text_content = self.document_handler.get_document_content(report_data['url'])
+            if not text_content:
+                logging.error("Failed to extract text from document")
+                return None
 
-                            # Quick check for obvious non-reports
-                            if any(bad_term in title.lower() for bad_term in self.negative_patterns):
-                                logging.info(f"Skipping likely non-report: {url}")
-                                continue
+            text_length = len(text_content)
+            logging.info(f"Successfully extracted text ({text_length:,} characters)")
 
-                            # Keep the year check
-                            year_present = str(year) in title
-                            if year_present:
-                                logging.info(f"Found candidate report: {url}")
-                                
-                                # Use document handler with retry
-                                for attempt in range(3):  # Add retry logic
-                                    try:
-                                        text_content = self.document_handler.get_document_content(url)
-                                        if text_content and self.scope_1_pattern.search(text_content):
-                                            logging.info(f"'scope 1' found in {url}")
-                                            return {
-                                                "url": url,
-                                                "title": raw_title,
-                                                "year": year
-                                            }
-                                        else:
-                                            logging.info(f"'scope 1' not found in {url}, trying next result...")
-                                        break  # Exit retry loop if we got content
-                                    except Exception as e:
-                                        if attempt == 2:  # Last attempt
-                                            logging.error(f"Failed to access {url} after 3 attempts: {str(e)}")
-                                        else:
-                                            logging.warning(f"Attempt {attempt + 1} failed, retrying...")
+            if text_length < 50:
+                logging.warning("Extracted text suspiciously short")
+                return None
 
-                except requests.RequestException as e:
-                    logging.error(f"Network error in search '{search_term}': {str(e)}")
-                except Exception as e:
-                    logging.error(f"Unexpected error in search '{search_term}': {str(e)}")
+            emissions_data = self.analyzer.extract_emissions_data(text_content, company_name)
+            if not emissions_data:
+                logging.warning("No emissions data found in text")
+                return None
 
-            logging.info(f"No suitable {year} report with 'scope 1' found for {company_name}, checking next available year...")
+            # Structure the final results
+            result = {
+                "company": company_name,
+                "report_url": report_data['url'],
+                "report_year": report_data['year'],
+                "emissions_data": emissions_data,
+                "processed_at": self._get_timestamp()
+            }
 
-        logging.warning("No official sustainability report found that mentions 'scope 1'")
-        return None
+            self._save_results(company_name, result)
+            logging.info("Analysis complete")
+            return result
+
+        except Exception as e:
+            logging.error(f"Error processing {company_name}: {str(e)}")
+            return None
+
+    def _save_results(self, company_name: str, data: Dict):
+        """# Save results to JSON file in the output directory
+        # Uses company name for filename, lowercased with underscores"""
+        filename = os.path.join(
+            DEFAULT_OUTPUT_DIR,
+            f"{company_name.lower().replace(' ', '_')}.json"
+        )
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logging.info(f"Results saved to {filename}")
+        except Exception as e:
+            logging.error(f"Failed to save results: {str(e)}")
+
+    def _get_timestamp(self) -> str:
+        """# Get current timestamp in ISO format for result tracking"""
+        from datetime import datetime
+        return datetime.utcnow().isoformat()
+
+def main():
+    """# Main entry point for command line usage
+    # Provides interactive prompt for company names"""
+    try:
+        tracker = EmissionsTracker()
+        print("\nEmissions Data Analyzer")
+        print("----------------------")
+        print("Enter company names (or 'quit' to exit)")
+
+        while True:
+            try:
+                company_name = input("\nCompany name: ").strip()
+                if company_name.lower() in ['quit', 'exit', 'q']:
+                    break
+                if not company_name:
+                    continue
+
+                result = tracker.process_company(company_name)
+                if result:
+                    print("\nResults found:")
+                    print(json.dumps(result, indent=2, ensure_ascii=False))
+                else:
+                    print("\nNo results found")
+
+            except KeyboardInterrupt:
+                print("\nOperation cancelled")
+                continue
+
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user")
+    except Exception as e:
+        logging.error(f"Program error: {str(e)}")
+        print("\nProgram terminated due to error")
+    finally:
+        print("\nGoodbye!")
+
+if __name__ == "__main__":
+    main()
