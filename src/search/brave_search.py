@@ -54,7 +54,7 @@ class BraveSearchClient:
 
         for year in SEARCH_YEARS:
             logging.info(f"\nTrying year: {year}")
-            search_term = f"{company_name} global sustainability report {year} scope 1 2 emissions filetype:pdf"
+            search_term = f"{company_name} global sustainability report {year} filetype:pdf"
             logging.info(f"Search query: {search_term}")
 
             try:
