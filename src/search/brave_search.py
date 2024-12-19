@@ -1,6 +1,7 @@
 import requests
 import logging
 import re
+import os
 from typing import Dict, Optional
 from ..config import (
     BRAVE_API_KEY, 
@@ -10,12 +11,15 @@ from ..config import (
 from ..extraction.pdf_handler import DocumentHandler
 
 class BraveSearchClient:
-    """# Handles searching for sustainability reports using Brave Search
+    """ 
+    # Handles searching for sustainability reports using Brave Search
     # Features:
     # - Searches for PDFs using company name and year
-    # - Validates documents contain emissions data
+    # - Checks a blacklist of URLs before processing
+    # - Validates documents contain emissions data (Scope 1)
     # - Filters out non-sustainability reports
     """
+
     def __init__(self):
         self.api_key = BRAVE_API_KEY
         self.base_url = "https://api.search.brave.com/res/v1/web/search"
@@ -25,10 +29,23 @@ class BraveSearchClient:
         }
         self.document_handler = DocumentHandler()
         
-        # Pattern to validate scope 1 mentions
+        # ###########################################################################################################
+        # Load the blacklist file (if it exists) to skip known non-useful URLs.
+        # This helps us avoid processing URLs that we already know don't yield proper emissions data.
+        # ###########################################################################################################
+        self.blacklisted_urls = set()
+        blacklist_file = "blacklisted_urls.txt"
+        if os.path.exists(blacklist_file):
+            with open(blacklist_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    url_line = line.strip()
+                    if url_line and not url_line.startswith("#"):
+                        self.blacklisted_urls.add(url_line)
+
+        # Pattern to validate scope 1 mentions in the text extracted from PDFs
         self.scope_1_pattern = re.compile(r'(?i)scope[\s\-_]*1')
         
-        # Filter obvious non-reports
+        # Negative patterns to filter out known non-sustainability documents
         self.negative_patterns = [
             'proxy statement',
             '10-k',
@@ -37,12 +54,14 @@ class BraveSearchClient:
         ]
 
     def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
-        """# Search for a sustainability report PDF
+        """
+        # Search for a sustainability report PDF
         # Process:
         # 1. Try most recent year first
         # 2. Search multiple variations of report name
-        # 3. Validate PDF has scope 1 mentions
-        # 4. Return URL and year if found
+        # 3. Before processing, skip URLs that are blacklisted
+        # 4. Validate PDF has scope 1 mentions to confirm it's relevant
+        # 5. Return URL and year if found
         """
         logging.info(f"\n{'='*50}")
         logging.info(f"Starting search for {company_name}'s sustainability report")
@@ -74,7 +93,16 @@ class BraveSearchClient:
                         for idx, result_data in enumerate(results["web"]["results"], 1):
                             url = result_data["url"]
                             logging.info(f"\nChecking result {idx}: {url}")
+
+                            # ###################################################################################################
+                            # Check if URL is blacklisted; if so, skip it immediately.
+                            # This ensures we don't re-process known non-useful reports.
+                            # ###################################################################################################
+                            if url in self.blacklisted_urls:
+                                logging.info(f"Skipping blacklisted URL: {url}")
+                                continue
                             
+                            # Check if the title suggests it's not a sustainability report
                             if any(bad_term in result_data.get("title", "").lower() for bad_term in self.negative_patterns):
                                 logging.info("Skipping (appears to be non-report document)")
                                 continue
