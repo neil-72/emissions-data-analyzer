@@ -10,6 +10,12 @@ from ..config import (
 from ..extraction.pdf_handler import DocumentHandler
 
 class BraveSearchClient:
+    """# Handles searching for sustainability reports using Brave Search
+    # Features:
+    # - Searches for PDFs using company name and year
+    # - Validates documents contain emissions data
+    # - Filters out non-sustainability reports
+    """
     def __init__(self):
         self.api_key = BRAVE_API_KEY
         self.base_url = "https://api.search.brave.com/res/v1/web/search"
@@ -18,7 +24,11 @@ class BraveSearchClient:
             "X-Subscription-Token": self.api_key
         }
         self.document_handler = DocumentHandler()
+        
+        # Pattern to validate scope 1 mentions
         self.scope_1_pattern = re.compile(r'(?i)scope[\s\-_]*1')
+        
+        # Filter obvious non-reports
         self.negative_patterns = [
             'proxy statement',
             '10-k',
@@ -27,69 +37,68 @@ class BraveSearchClient:
         ]
 
     def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
+        """# Search for a sustainability report PDF
+        # Process:
+        # 1. Try most recent year first
+        # 2. Search multiple variations of report name
+        # 3. Validate PDF has scope 1 mentions
+        # 4. Return URL and year if found
+        """
+        logging.info(f"\n{'='*50}")
+        logging.info(f"Starting search for {company_name}'s sustainability report")
+        logging.info(f"{'='*50}")
+
         if not company_name.strip():
             logging.error("Empty company name provided")
             return None
 
         for year in SEARCH_YEARS:
-            logging.info(f"Searching for {company_name} {year} sustainability report...")
-            
+            logging.info(f"\nTrying year: {year}")
             search_term = f"{company_name} sustainability report {year} filetype:pdf"
+            logging.info(f"Search query: {search_term}")
 
             try:
+                logging.info("Making request to Brave Search API...")
                 response = requests.get(
                     self.base_url,
-                    headers={
-                        "Accept": "application/json",
-                        "X-Subscription-Token": self.api_key
-                    },
-                    params={
-                        "q": search_term, 
-                        "count": MAX_RESULTS_PER_SEARCH
-                    },
+                    headers=self.headers,
+                    params={"q": search_term, "count": MAX_RESULTS_PER_SEARCH},
                     timeout=30
                 )
                 
-                if response.status_code == 422:
-                    logging.error(f"Invalid API key or request format: {response.text}")
-                    continue
-                    
-                response.raise_for_status()
-                results = response.json()
-
-                if "web" in results and "results" in results["web"]:
-                    for result_data in results["web"]["results"]:
-                        raw_title = result_data.get("title", "")
-                        url = result_data["url"]
-                        title = raw_title.strip().lower()
-
-                        if any(bad_term in title.lower() for bad_term in self.negative_patterns):
-                            logging.info(f"Skipping likely non-report: {url}")
-                            continue
-
-                        if str(year) in title:
-                            logging.info(f"Found candidate report: {url}")
+                if response.status_code == 200:
+                    results = response.json()
+                    if results.get("web", {}).get("results"):
+                        logging.info(f"Found {len(results['web']['results'])} potential results")
+                        
+                        for idx, result_data in enumerate(results["web"]["results"], 1):
+                            url = result_data["url"]
+                            logging.info(f"\nChecking result {idx}: {url}")
                             
+                            if any(bad_term in result_data.get("title", "").lower() for bad_term in self.negative_patterns):
+                                logging.info("Skipping (appears to be non-report document)")
+                                continue
+
+                            logging.info("Validating document contains emissions data...")
                             try:
                                 text_content = self.document_handler.get_document_content(url)
-                                if text_content and self.scope_1_pattern.search(text_content):
-                                    logging.info(f"'scope 1' found in {url}")
-                                    return {
-                                        "url": url,
-                                        "title": raw_title,
-                                        "year": year
-                                    }
-                                else:
-                                    logging.info(f"'scope 1' not found in {url}")
+                                if text_content:
+                                    logging.info(f"Successfully extracted {len(text_content):,} characters")
+                                    if self.scope_1_pattern.search(text_content):
+                                        logging.info("✓ Found emissions data references")
+                                        return {"url": url, "year": year}
+                                    else:
+                                        logging.info("✗ No emissions data found")
                             except Exception as e:
-                                logging.error(f"Failed to access {url}: {str(e)}")
+                                logging.error(f"Failed to process PDF: {str(e)}")
 
-            except requests.RequestException as e:
-                logging.error(f"Network error: {str(e)}")
+                else:
+                    logging.error(f"Search API error: {response.status_code}")
+
             except Exception as e:
-                logging.error(f"Unexpected error: {str(e)}")
+                logging.error(f"Search error: {str(e)}")
 
             logging.info(f"No suitable {year} report found for {company_name}")
 
-        logging.warning(f"No sustainability report found for {company_name}")
+        logging.warning(f"\nNo sustainability report found for {company_name}")
         return None
