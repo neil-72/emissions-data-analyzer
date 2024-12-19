@@ -1,51 +1,39 @@
-from parsestudio.parse import PDFParser
-import requests
-import tempfile
-import os
-from typing import Optional, Dict, List
 import logging
-import re
-from ..config import MAX_PDF_SIZE
+from typing import Optional, Dict, Any
+import io
+import requests
+from parsestudio import DoclingParser
+from ..config import MAX_PDF_SIZE  # Keeping your existing config import
 
-class EnhancedDocumentHandler:
-    """PDF Document Handler using ParseStudio for Emissions Data Extraction
-    Maintains similar functionality to original but with improved parsing
+class DocumentHandler:
+    """Enhanced PDF Document Handler for Emissions Data Extraction
+    Combines ParseStudio's robust parsing with emissions-specific extraction logic
     """
     def __init__(self):
-        # Initialize ParseStudio with Docling backend
-        # Use OCR and accurate table detection
-        self.parser = PDFParser(
-            parser="docling",
-            parser_kwargs={
-                "pipeline_options": {
-                    "do_ocr": True,
-                    "do_table_structure": True,
-                    "table_structure_options": {
-                        "do_cell_matching": True,
-                        "mode": "ACCURATE"
-                    }
-                }
-            }
-        )
+        # Initialize ParseStudio parser
+        self.parser = DoclingParser()
+        
+        # Emissions-specific patterns (keeping your core functionality)
+        self.emissions_patterns = {
+            'scope1': [
+                r'(?i)scope\s*1\s*emissions?',
+                r'(?i)direct\s*emissions?',
+                r'(?i)scope\s*1.*?[\d,.]+\s*(?:tco2e?|tons?)',
+            ],
+            'scope2': [
+                r'(?i)scope\s*2\s*emissions?',
+                r'(?i)indirect\s*emissions?',
+                r'(?i)(?:location|market).based.*?[\d,.]+\s*(?:tco2e?|tons?)',
+            ],
+            'year': [
+                r'(?i)(?:fy|year|20)\d{2}',
+                r'(?i)reporting\s*period',
+            ]
+        }
 
-        # Same patterns as your original implementation
-        self.data_patterns = [
-            r'(?i)scope\s*[123]',     
-            r'(?i)emissions',          
-            r'(?i)fy\d{2}',           
-            r'(?i)(19|20)\d{2}',      
-            r'(?i)mtco2e?'            
-        ]
-
-    def get_document_content(self, url: str) -> Optional[str]:
-        """Main method to download and process PDF
-        1. Downloads PDF to temp file
-        2. Validates content type
-        3. Processes with ParseStudio
-        4. Combines relevant content
-        """
+    def get_document_content(self, url: str) -> Optional[Dict[str, Any]]:
+        """Downloads and processes PDF document with enhanced error handling"""
         try:
-            # Download PDF
             response = requests.get(
                 url,
                 headers={'User-Agent': 'Mozilla/5.0'},
@@ -58,171 +46,182 @@ class EnhancedDocumentHandler:
                 logging.warning(f"URL {url} does not point to a PDF")
                 return None
 
-            # Save to temp file (ParseStudio needs file path)
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
-                temp_pdf.write(response.content)
-                temp_path = temp_pdf.name
-
-            try:
-                # Parse PDF with ParseStudio
-                outputs = self.parser.run(
-                    temp_path, 
-                    modalities=["text", "tables"]
-                )
-
-                if not outputs:
+            if 'content-length' in response.headers:
+                content_length = int(response.headers['content-length'])
+                if content_length > MAX_PDF_SIZE:
+                    logging.warning(f"PDF size ({content_length} bytes) exceeds maximum allowed size")
                     return None
 
-                # Process first document
-                extracted_content = self._process_document(outputs[0])
+            return self._process_document(io.BytesIO(response.content))
 
-                # Save raw extraction for debugging like original
-                if extracted_content:
-                    with open("raw_extracted_data.txt", "w", encoding="utf-8") as f:
-                        f.write(extracted_content)
-
-                return extracted_content
-
-            finally:
-                # Clean up temp file
-                os.unlink(temp_path)
-
+        except requests.RequestException as e:
+            logging.error(f"Failed to fetch PDF: {str(e)}")
+            return None
         except Exception as e:
-            logging.error(f"Failed to get document: {str(e)}")
+            logging.error(f"Unexpected error processing document: {str(e)}")
             return None
 
-    def _process_document(self, doc_output) -> Optional[str]:
-        """Process ParseStudio output maintaining original structure
-        1. Identifies relevant pages
-        2. Processes tables and text
-        3. Maintains formatting and markers
-        """
+    def _process_document(self, pdf_content: io.BytesIO) -> Optional[Dict[str, Any]]:
+        """Enhanced document processing using ParseStudio"""
         try:
-            extracted_content = []
+            # Use ParseStudio to parse the document
+            parsed_content = self.parser.parse(pdf_content)
             
-            # Get full text to identify relevant pages
-            full_text = doc_output.text.text
-            
-            # Split into pages (assuming page markers in text)
-            pages = self._split_into_pages(full_text)
-            
-            # Find relevant pages
-            for page_num, page_text in enumerate(pages, 1):
-                if not any(re.search(pattern, page_text) for pattern in self.data_patterns):
-                    continue
-                    
-                # Process tables on this page
-                relevant_tables = [
-                    table for table in doc_output.tables
-                    if table.metadata.page_number == page_num
-                ]
-                
-                for table_num, table in enumerate(relevant_tables, 1):
-                    processed_table = self._process_table(table)
-                    if processed_table:
-                        extracted_content.append(
-                            f"=== TABLE {table_num} ON PAGE {page_num} ===\n{processed_table}\n"
-                        )
+            if not parsed_content:
+                logging.warning("No content extracted from PDF")
+                return None
 
-                # Process text
-                processed_text = self._process_text(page_text)
-                if processed_text:
-                    extracted_content.append(
-                        f"=== TEXT ON PAGE {page_num} ===\n{processed_text}\n"
-                    )
+            # Extract emissions-relevant sections
+            emissions_data = {
+                'tables': self._extract_emissions_tables(parsed_content),
+                'text_blocks': self._extract_emissions_text(parsed_content),
+                'metadata': self._extract_metadata(parsed_content)
+            }
 
-            return "\n".join(extracted_content) if extracted_content else None
+            return self._structure_emissions_data(emissions_data)
 
         except Exception as e:
-            logging.error(f"Processing error: {str(e)}")
+            logging.error(f"Error processing document content: {str(e)}")
             return None
 
-    def _split_into_pages(self, text: str) -> List[str]:
-        """Split full text into pages based on markers"""
-        # You might need to adjust this based on how ParseStudio formats the text
-        pages = []
-        current_page = []
+    def _extract_emissions_tables(self, parsed_content: Dict) -> list:
+        """Extracts and processes tables containing emissions data"""
+        emissions_tables = []
         
-        for line in text.split('\n'):
-            if re.match(r'={3,}\s*PAGE\s+\d+\s*={3,}', line):
-                if current_page:
-                    pages.append('\n'.join(current_page))
-                current_page = []
-            else:
-                current_page.append(line)
-                
-        if current_page:
-            pages.append('\n'.join(current_page))
+        # ParseStudio provides structured table access
+        for table in parsed_content.get('tables', []):
+            if self._is_emissions_table(table):
+                processed_table = self._process_emissions_table(table)
+                if processed_table:
+                    emissions_tables.append(processed_table)
+        
+        return emissions_tables
+
+    def _extract_emissions_text(self, parsed_content: Dict) -> list:
+        """Extracts text blocks containing emissions data"""
+        emissions_blocks = []
+        
+        for block in parsed_content.get('text_blocks', []):
+            if self._contains_emissions_data(block):
+                emissions_blocks.append({
+                    'content': block.get('text', ''),
+                    'page': block.get('page_number'),
+                    'context': self._get_surrounding_context(block)
+                })
+        
+        return emissions_blocks
+
+    def _is_emissions_table(self, table: Dict) -> bool:
+        """Improved emissions table detection"""
+        if not table:
+            return False
+
+        # Check table headers and content for emissions-related terms
+        headers = table.get('headers', [])
+        first_column = table.get('first_column', [])
+        
+        # Look for emissions-related patterns in headers and first column
+        header_text = ' '.join(str(h) for h in headers if h)
+        column_text = ' '.join(str(c) for c in first_column if c)
+        
+        return any(
+            any(pattern.search(text) for pattern in patterns)
+            for patterns in self.emissions_patterns.values()
+            for text in [header_text, column_text]
+        )
+
+    def _process_emissions_table(self, table: Dict) -> Optional[Dict]:
+        """Enhanced emissions table processing"""
+        try:
+            processed = {
+                'headers': table.get('headers', []),
+                'data': table.get('data', []),
+                'page': table.get('page_number'),
+                'emissions_data': []
+            }
+
+            # Extract specific emissions values and contexts
+            for row in processed['data']:
+                emissions_entry = self._extract_row_emissions(row)
+                if emissions_entry:
+                    processed['emissions_data'].append(emissions_entry)
+
+            return processed if processed['emissions_data'] else None
+
+        except Exception as e:
+            logging.error(f"Error processing emissions table: {str(e)}")
+            return None
+
+    def _structure_emissions_data(self, extracted_data: Dict) -> Dict:
+        """Structures extracted emissions data into a standardized format"""
+        return {
+            'scope1_emissions': self._find_scope1_emissions(extracted_data),
+            'scope2_emissions': self._find_scope2_emissions(extracted_data),
+            'reporting_year': self._find_reporting_year(extracted_data),
+            'data_quality': self._assess_data_quality(extracted_data),
+            'source_context': self._get_source_context(extracted_data)
+        }
+
+    def _find_scope1_emissions(self, data: Dict) -> Optional[Dict]:
+        """Enhanced Scope 1 emissions extraction"""
+        for table in data.get('tables', []):
+            if table.get('emissions_data'):
+                for entry in table['emissions_data']:
+                    if entry.get('scope') == 1:
+                        return {
+                            'value': entry.get('value'),
+                            'unit': entry.get('unit'),
+                            'context': entry.get('context')
+                        }
+        return None
+
+    def _find_scope2_emissions(self, data: Dict) -> Optional[Dict]:
+        """Enhanced Scope 2 emissions extraction with market/location based distinction"""
+        scope2_data = {
+            'location_based': None,
+            'market_based': None
+        }
+        
+        for table in data.get('tables', []):
+            if table.get('emissions_data'):
+                for entry in table['emissions_data']:
+                    if entry.get('scope') == 2:
+                        if 'location' in entry.get('context', '').lower():
+                            scope2_data['location_based'] = entry
+                        elif 'market' in entry.get('context', '').lower():
+                            scope2_data['market_based'] = entry
+        
+        return scope2_data if any(scope2_data.values()) else None
+
+    def _assess_data_quality(self, data: Dict) -> Dict:
+        """Assesses the quality and reliability of extracted data"""
+        return {
+            'has_tables': bool(data.get('tables')),
+            'has_text_blocks': bool(data.get('text_blocks')),
+            'completeness': self._calculate_completeness(data),
+            'confidence_score': self._calculate_confidence(data)
+        }
+
+    def _calculate_completeness(self, data: Dict) -> float:
+        """Calculates data completeness score"""
+        required_fields = ['scope1_emissions', 'scope2_emissions', 'reporting_year']
+        present_fields = sum(1 for field in required_fields if data.get(field))
+        return present_fields / len(required_fields)
+
+    def _calculate_confidence(self, data: Dict) -> float:
+        """Calculates confidence score for extracted data"""
+        confidence_factors = {
+            'has_tables': 0.4,
+            'has_text_validation': 0.3,
+            'has_metadata': 0.3
+        }
+        
+        score = 0.0
+        if data.get('tables'):
+            score += confidence_factors['has_tables']
+        if data.get('text_blocks'):
+            score += confidence_factors['has_text_validation']
+        if data.get('metadata'):
+            score += confidence_factors['has_metadata']
             
-        return pages or [text]  # Return original text if no page markers
-
-    def _process_table(self, table) -> Optional[str]:
-        """Process ParseStudio table maintaining original structure"""
-        if not table or not table.dataframe.empty:
-            return None
-
-        formatted_rows = []
-        df = table.dataframe
-        
-        # Handle header
-        header_row = list(df.columns)
-        if header_row:
-            formatted_rows.append("HEADER: " + " | ".join(str(col).strip() for col in header_row))
-
-        # Process data rows
-        current_scope = None
-        for _, row in df.iterrows():
-            row_text = " | ".join(str(cell).strip() for cell in row if str(cell).strip())
-            if not row_text:
-                continue
-
-            # Check for scope headers
-            scope_match = None
-            for cell in row:
-                if isinstance(cell, str) and re.search(r'(?i)scope\s*[123]', cell):
-                    scope_match = cell
-                    break
-
-            if scope_match:
-                current_scope = scope_match
-                formatted_rows.append(f"SCOPE: {row_text}")
-                continue
-
-            # Handle data rows with indentation
-            if current_scope:
-                first_cell = str(row.iloc[0])
-                leading_spaces = len(first_cell) - len(first_cell.lstrip())
-                indent_level = leading_spaces // 2
-
-                row_type = "TOTAL" if any(t in row_text.lower() for t in ['total', 'subtotal']) else "DATA"
-                formatted_rows.append(f"{'  ' * indent_level}{row_type}: {row_text}")
-            else:
-                formatted_rows.append(f"DATA: {row_text}")
-
-        return "\n".join(formatted_rows) if formatted_rows else None
-
-    def _process_text(self, text: str) -> Optional[str]:
-        """Process text maintaining original structure and markers"""
-        if not text:
-            return None
-
-        lines = text.split('\n')
-        processed_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Tag important lines (same as original)
-            if any(re.search(pattern, line) for pattern in self.data_patterns):
-                if re.search(r'(?i)(table|figure|notes?|section)', line):
-                    processed_lines.append(f"SECTION: {line}")
-                elif re.search(r'\d', line):
-                    processed_lines.append(f"DATA: {line}")
-                else:
-                    processed_lines.append(line)
-            else:
-                processed_lines.append(line)
-
-        return "\n".join(processed_lines) if processed_lines else None
+        return round(score, 2)
