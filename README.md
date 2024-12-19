@@ -40,11 +40,32 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
+
 Create a `.env` file in the project root:
+
+#### Option 1: Manual Creation
+Create a new file named `.env` and add:
 ```bash
-echo "CLAUDE_API_KEY=your_claude_api_key
-BRAVE_API_KEY=your_brave_api_key" > .env
+CLAUDE_API_KEY=your_claude_api_key_here
+BRAVE_API_KEY=your_brave_api_key_here
+FLASK_APP=src.web.app
+FLASK_ENV=development
 ```
+
+#### Option 2: Command Line
+Or use this command:
+```bash
+echo "CLAUDE_API_KEY=your_claude_api_key_here
+BRAVE_API_KEY=your_brave_api_key_here
+FLASK_APP=src.web.app
+FLASK_ENV=development" > .env
+```
+
+Note: Make sure to include all four environment variables:
+- CLAUDE_API_KEY: Your Claude API key (from Anthropic)
+- BRAVE_API_KEY: Your Brave Search API key
+- FLASK_APP: Location of the Flask application (leave as shown)
+- FLASK_ENV: Development environment setting (leave as shown)
 
 ### 4. Running the Tool
 
