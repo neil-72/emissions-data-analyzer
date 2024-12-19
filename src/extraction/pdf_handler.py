@@ -1,33 +1,39 @@
-import logging
-from typing import Optional, Dict, Any
-import io
+import pdfplumber
 import requests
-from parsestudio.pdf import Pdf  # Corrected import
+from typing import Optional, List, Dict
+import io
+import logging
+import re
 from ..config import MAX_PDF_SIZE
 
 class DocumentHandler:
-    """Enhanced PDF Document Handler for Emissions Data Extraction"""
+    """# PDF Document Handler for Emissions Data Extraction
+    # Key capabilities:
+    # - Extracts both tables and text from PDFs
+    # - Handles multi-column layouts intelligently 
+    # - Preserves document structure and formatting
+    # - Tags content types (TABLE, TEXT, DATA, HEADER)
+    # - Maintains page numbers and section markers
+    """
     def __init__(self):
-        # Emissions-specific patterns
-        self.emissions_patterns = {
-            'scope1': [
-                r'(?i)scope\s*1\s*emissions?',
-                r'(?i)direct\s*emissions?',
-                r'(?i)scope\s*1.*?[\d,.]+\s*(?:tco2e?|tons?)',
-            ],
-            'scope2': [
-                r'(?i)scope\s*2\s*emissions?',
-                r'(?i)indirect\s*emissions?',
-                r'(?i)(?:location|market).based.*?[\d,.]+\s*(?:tco2e?|tons?)',
-            ],
-            'year': [
-                r'(?i)(?:fy|year|20)\d{2}',
-                r'(?i)reporting\s*period',
-            ]
-        }
+        # Core patterns to identify relevant sections
+        self.data_patterns = [
+            r'(?i)scope\s*[123]',     # Emissions scope references
+            r'(?i)emissions',          # Direct emissions mentions 
+            r'(?i)fy\d{2}',           # Fiscal year patterns e.g., FY23
+            r'(?i)(19|20)\d{2}',      # Calendar year patterns
+            r'(?i)mtco2e?'            # Common unit patterns
+        ]
+        # Column handling settings
+        self.x_tolerance = 3          # Horizontal spacing for word grouping
+        self.y_tolerance = 3          # Vertical spacing for line detection
 
-    def get_document_content(self, url: str) -> Optional[Dict[str, Any]]:
-        """Downloads and processes PDF document with enhanced error handling"""
+    def get_document_content(self, url: str) -> Optional[str]:
+        """# Main method to download and process PDF
+        # 1. Downloads PDF with error handling
+        # 2. Validates PDF content type
+        # 3. Extracts and processes content
+        # 4. Saves raw extraction for debugging"""
         try:
             response = requests.get(
                 url,
@@ -41,213 +47,190 @@ class DocumentHandler:
                 logging.warning(f"URL {url} does not point to a PDF")
                 return None
 
-            if 'content-length' in response.headers:
-                content_length = int(response.headers['content-length'])
-                if content_length > MAX_PDF_SIZE:
-                    logging.warning(f"PDF size ({content_length} bytes) exceeds maximum allowed size")
-                    return None
+            extracted = self._extract_content(io.BytesIO(response.content))
 
-            return self._process_document(io.BytesIO(response.content))
+            # Save raw extraction for debugging
+            if extracted:
+                with open("raw_extracted_data.txt", "w", encoding="utf-8") as f:
+                    f.write(extracted)
 
-        except requests.RequestException as e:
-            logging.error(f"Failed to fetch PDF: {str(e)}")
-            return None
-        except Exception as e:
-            logging.error(f"Unexpected error processing document: {str(e)}")
-            return None
-
-    def _process_document(self, pdf_content: io.BytesIO) -> Optional[Dict[str, Any]]:
-        """Process document using ParseStudio's PDF parser"""
-        try:
-            # Initialize PDF parser with content
-            pdf = Pdf(pdf_content)
-            
-            # Extract text and tables
-            content = {
-                'text': pdf.extract_text(),
-                'tables': pdf.extract_tables(),
-                'metadata': pdf.get_metadata()
-            }
-            
-            # Process extracted content
-            emissions_data = {
-                'tables': self._extract_emissions_tables(content['tables']),
-                'text_blocks': self._extract_emissions_text(content['text']),
-                'metadata': content['metadata']
-            }
-
-            return self._structure_emissions_data(emissions_data)
+            return extracted
 
         except Exception as e:
-            logging.error(f"Error processing document content: {str(e)}")
+            logging.error(f"Failed to get document: {str(e)}")
             return None
 
-    def _extract_emissions_tables(self, tables: list) -> list:
-        """Extract and process tables containing emissions data"""
-        emissions_tables = []
-        
-        for table in tables:
-            if self._is_emissions_table(table):
-                processed_table = self._process_emissions_table(table)
-                if processed_table:
-                    emissions_tables.append(processed_table)
-        
-        return emissions_tables
-
-    def _extract_emissions_text(self, text: str) -> list:
-        """Extract text blocks containing emissions data"""
-        emissions_blocks = []
-        
-        # Split text into paragraphs/blocks
-        blocks = text.split('\n\n')
-        
-        for block in blocks:
-            if self._contains_emissions_data(block):
-                emissions_blocks.append({
-                    'content': block,
-                    'context': self._get_surrounding_context(block)
-                })
-        
-        return emissions_blocks
-
-    def _is_emissions_table(self, table: list) -> bool:
-        """Check if table contains emissions data"""
-        if not table or not table[0]:  # Check if table has headers
-            return False
-
-        # Convert first row (headers) to string for pattern matching
-        header_text = ' '.join(str(cell) for cell in table[0])
-        
-        # Check if any emissions patterns match the headers
-        return any(
-            pattern in header_text.lower()
-            for patterns in self.emissions_patterns.values()
-            for pattern in patterns
-        )
-
-    def _process_emissions_table(self, table: list) -> Optional[Dict]:
-        """Process emissions table data"""
+    def _extract_content(self, pdf_content: io.BytesIO) -> Optional[str]:
+        """# Main content extraction logic
+        # Process:
+        # 1. First pass identifies relevant pages
+        # 2. Extracts tables first (more structured)
+        # 3. Then extracts surrounding text
+        # 4. Preserves page numbers and content markers"""
         try:
-            headers = table[0]
-            data = table[1:]
-            
-            processed = {
-                'headers': headers,
-                'data': [],
-                'emissions_data': []
-            }
-
-            for row in data:
-                if row:  # Skip empty rows
-                    emissions_entry = self._extract_row_emissions(row, headers)
-                    if emissions_entry:
-                        processed['emissions_data'].append(emissions_entry)
-                        processed['data'].append(row)
-
-            return processed if processed['emissions_data'] else None
-
-        except Exception as e:
-            logging.error(f"Error processing emissions table: {str(e)}")
-            return None
-
-    def _extract_row_emissions(self, row: list, headers: list) -> Optional[Dict]:
-        """Extract emissions data from a table row"""
-        try:
-            emissions_data = {}
-            
-            for header, value in zip(headers, row):
-                header_lower = str(header).lower()
+            with pdfplumber.open(pdf_content) as pdf:
+                extracted_content = []
                 
-                # Identify scope
-                if 'scope 1' in header_lower:
-                    emissions_data['scope'] = 1
-                    emissions_data['value'] = self._extract_numeric_value(str(value))
-                elif 'scope 2' in header_lower:
-                    emissions_data['scope'] = 2
-                    if 'location' in header_lower:
-                        emissions_data['type'] = 'location-based'
-                    elif 'market' in header_lower:
-                        emissions_data['type'] = 'market-based'
-                    emissions_data['value'] = self._extract_numeric_value(str(value))
-                
-                # Extract year if present
-                if any(pattern in header_lower for pattern in self.emissions_patterns['year']):
-                    emissions_data['year'] = self._extract_year(str(value))
+                # Find pages with relevant content first
+                relevant_pages = []
+                for page_num, page in enumerate(pdf.pages):
+                    text = page.extract_text() or ""
+                    if any(re.search(pattern, text) for pattern in self.data_patterns):
+                        relevant_pages.append(page_num)
 
-            return emissions_data if emissions_data.get('value') is not None else None
+                # Process identified pages
+                for page_num in relevant_pages:
+                    page = pdf.pages[page_num]
+                    
+                    # Handle tables first
+                    tables = page.extract_tables()
+                    for table_num, table in enumerate(tables, 1):
+                        if table and len(table) > 1:
+                            processed_table = self._process_table(table)
+                            if processed_table:
+                                extracted_content.append(
+                                    f"=== TABLE {table_num} ON PAGE {page_num + 1} ===\n{processed_table}\n"
+                                )
+
+                    # Then handle text with column awareness
+                    text = self._extract_text_with_columns(page)
+                    if text:
+                        context = self._process_text(text)
+                        if context:
+                            extracted_content.append(
+                                f"=== TEXT ON PAGE {page_num + 1} ===\n{context}\n"
+                            )
+
+                return "\n".join(extracted_content) if extracted_content else None
 
         except Exception as e:
-            logging.error(f"Error extracting row emissions: {str(e)}")
+            logging.error(f"Extraction error: {str(e)}")
             return None
 
-    def _extract_numeric_value(self, text: str) -> Optional[float]:
-        """Extract numeric value from text, handling different formats"""
+    def _extract_text_with_columns(self, page) -> str:
+        """# Smart multi-column text extraction
+        # 1. Gets word positions and coordinates
+        # 2. Groups words by vertical position (rows)
+        # 3. Orders words within rows by horizontal position
+        # 4. Reconstructs proper reading order"""
+        def sort_by_position(word):
+            return (-word['top'], word['x0'])
+        
         try:
-            # Remove common non-numeric characters except decimal points
-            clean_text = ''.join(c for c in text if c.isdigit() or c in '.-')
-            return float(clean_text) if clean_text else None
-        except ValueError:
+            words = page.extract_words(
+                x_tolerance=self.x_tolerance,
+                y_tolerance=self.y_tolerance
+            )
+            
+            if not words:
+                return page.extract_text() or ""
+                
+            words.sort(key=sort_by_position)
+            
+            # Group words into lines
+            lines = []
+            current_line = []
+            current_y = None
+            
+            for word in words:
+                if current_y is None:
+                    current_y = word['top']
+                elif abs(word['top'] - current_y) > self.y_tolerance:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = []
+                    current_y = word['top']
+                current_line.append(word['text'])
+                
+            if current_line:
+                lines.append(' '.join(current_line))
+                
+            return '\n'.join(lines)
+            
+        except Exception as e:
+            logging.warning(f"Column extraction failed, falling back to simple extraction: {str(e)}")
+            return page.extract_text() or ""
+
+    def _process_table(self, table: List[List]) -> Optional[str]:
+        """# Process tables while preserving structure
+        # Features:
+        # - Identifies headers and scope sections
+        # - Tracks indentation for hierarchical data
+        # - Labels row types (HEADER, DATA, TOTAL)
+        # - Maintains table formatting"""
+        if not table:
             return None
 
-    def _contains_emissions_data(self, text: str) -> bool:
-        """Check if text block contains emissions-related data"""
-        text_lower = text.lower()
-        return any(
-            pattern in text_lower
-            for patterns in self.emissions_patterns.values()
-            for pattern in patterns
-        )
+        # Track document structure
+        current_scope = None
+        formatted_rows = []
+        header_row = None
 
-    def _get_surrounding_context(self, text: str, context_window: int = 100) -> str:
-        """Get surrounding context for a piece of text"""
-        # This is a simplified version - could be enhanced based on needs
-        return text[:context_window] + '...' if len(text) > context_window else text
+        # Handle header row
+        if table[0]:
+            header_row = [str(cell).strip() for cell in table[0] if cell]
+            if header_row:
+                formatted_rows.append("HEADER: " + " | ".join(header_row))
 
-    def _extract_year(self, text: str) -> Optional[int]:
-        """Extract year from text"""
-        import re
-        year_match = re.search(r'20\d{2}', text)
-        if year_match:
-            return int(year_match.group())
-        return None
+        # Process data rows
+        for row_idx, row in enumerate(table[1:], 1):
+            row_cells = [str(cell).strip() if cell else "" for cell in row]
+            row_text = " | ".join(cell for cell in row_cells if cell)
+            if not row_text:
+                continue
 
-    def _structure_emissions_data(self, extracted_data: Dict) -> Dict:
-        """Structure extracted emissions data into standardized format"""
-        structured_data = {
-            'scope1_emissions': self._find_scope1_emissions(extracted_data),
-            'scope2_emissions': self._find_scope2_emissions(extracted_data),
-            'reporting_year': self._find_reporting_year(extracted_data),
-            'data_quality': self._assess_data_quality(extracted_data),
-            'source_context': self._get_source_context(extracted_data)
-        }
+            # Check for scope headers
+            scope_match = None
+            for cell in row_cells:
+                if re.search(r'(?i)scope\s*[123]', cell):
+                    scope_match = cell
+                    break
+
+            if scope_match:
+                current_scope = scope_match
+                formatted_rows.append(f"SCOPE: {row_text}")
+                continue
+
+            # Handle hierarchical data with indentation
+            if current_scope:
+                first_cell = str(row[0])
+                leading_spaces = len(first_cell) - len(first_cell.lstrip())
+                indent_level = leading_spaces // 2
+
+                row_type = "TOTAL" if any(t in row_text.lower() for t in ['total', 'subtotal']) else "DATA"
+                formatted_rows.append(f"{'  ' * indent_level}{row_type}: {row_text}")
+            else:
+                formatted_rows.append(f"DATA: {row_text}")
+
+        return "\n".join(formatted_rows) if formatted_rows else None
+
+    def _process_text(self, text: str) -> Optional[str]:
+        """# Process text sections with structure
+        # Features:
+        # - Identifies section headers and data lines
+        # - Preserves numerical data context
+        # - Maintains paragraph structure
+        # - Marks important sections"""
+        if not text:
+            return None
+
+        lines = text.split('\n')
+        processed_lines = []
         
-        # Add raw text representation for Claude analyzer
-        structured_data['text_content'] = self._create_text_representation(extracted_data)
-        return structured_data
-
-    def _create_text_representation(self, data: Dict) -> str:
-        """Creates a text representation of the extracted data for Claude analyzer"""
-        text_parts = []
-        
-        # Add tables content
-        if data.get('tables'):
-            text_parts.append("EMISSIONS DATA TABLES:")
-            for table in data['tables']:
-                if isinstance(table, dict) and table.get('data'):
-                    headers = table.get('headers', [])
-                    text_parts.append(" | ".join(str(h) for h in headers))
-                    for row in table['data']:
-                        text_parts.append(" | ".join(str(cell) for cell in row))
-                text_parts.append("\n")
-        
-        # Add text blocks
-        if data.get('text_blocks'):
-            text_parts.append("EMISSIONS TEXT SECTIONS:")
-            for block in data['text_blocks']:
-                if isinstance(block, dict):
-                    text_parts.append(block.get('content', ''))
-                    text_parts.append(f"Context: {block.get('context', '')}\n")
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Tag important lines
+            if any(re.search(pattern, line) for pattern in self.data_patterns):
+                if re.search(r'(?i)(table|figure|notes?|section)', line):
+                    processed_lines.append(f"SECTION: {line}")
+                elif re.search(r'\d', line):
+                    processed_lines.append(f"DATA: {line}")
                 else:
-                    text_parts.append(str(block))
-        
-        return "\n".join(text_parts)
+                    processed_lines.append(line)
+            else:
+                processed_lines.append(line)
+
+        return "\n".join(processed_lines) if processed_lines else None
