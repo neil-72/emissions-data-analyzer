@@ -7,6 +7,13 @@ from .extraction.pdf_handler import DocumentHandler
 from .analysis.claude_analyzer import EmissionsAnalyzer
 from .config import DEFAULT_OUTPUT_DIR
 
+# Configure logging to show detailed progress
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 class EmissionsTracker:
     def __init__(self):
         try:
@@ -25,14 +32,20 @@ class EmissionsTracker:
             return None
 
         try:
+            logging.info(f"\n{'='*50}")
             logging.info(f"Starting analysis for {company_name}")
+            logging.info(f"{'='*50}")
 
+            logging.info("Searching for sustainability report...")
             report_data = self.search_client.search_sustainability_report(company_name)
             if not report_data:
                 logging.warning("No sustainability report found")
                 return None
 
             logging.info(f"Found report for {company_name} from year {report_data['year']}")
+            logging.info(f"URL: {report_data['url']}")
+
+            logging.info("Extracting text from report...")
             text_content = self.document_handler.get_document_content(report_data['url'])
             if not text_content:
                 logging.error("Failed to extract text from document")
@@ -45,6 +58,7 @@ class EmissionsTracker:
                 logging.warning("Extracted text suspiciously short")
                 return None
 
+            logging.info("Analyzing emissions data...")
             emissions_data = self.analyzer.extract_emissions_data(text_content, company_name)
             if not emissions_data:
                 logging.warning("No emissions data found in text")
@@ -59,7 +73,9 @@ class EmissionsTracker:
             }
 
             self._save_results(company_name, result)
+            logging.info(f"\n{'='*50}")
             logging.info("Analysis complete")
+            logging.info(f"{'='*50}")
             return result
 
         except Exception as e:
