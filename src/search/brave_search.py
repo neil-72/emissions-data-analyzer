@@ -33,8 +33,8 @@ class BraveSearchClient:
         self.api_key = BRAVE_API_KEY
         self.base_url = "https://api.search.brave.com/res/v1/web/search"
         self.headers = {
-            "Accept": "application/json",
-            "X-Subscription-Token": self.api_key
+            "Accept": "*/*",
+            "x-subscription-token": self.api_key
         }
 
         # Initialize the DocumentHandler, which we use to extract text from PDFs
