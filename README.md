@@ -16,27 +16,92 @@ Extract and analyze Scope 1 and Scope 2 carbon emissions data from company susta
 - [Brave Search API key](https://brave.com/search/api/)
 - [Claude API key](https://console.anthropic.com/)
 
-## Quick Start
+## Quick Start Guide
 
-1. **Clone & Setup**
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/neil-72/emissions-data-analyzer.git
 cd emissions-data-analyzer
+```
+
+### 2. Environment Setup
+```bash
+# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: .\venv\Scripts\activate
+
+# Activate virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+.\venv\Scripts\activate
+
+# Install requirements
 pip install -r requirements.txt
 ```
 
-2. **Configure**
+### 3. Configure Environment
+Create a `.env` file in the project root:
 ```bash
-cp .env.example .env
-# Edit .env with your API keys
+echo "CLAUDE_API_KEY=your_claude_api_key
+BRAVE_API_KEY=your_brave_api_key" > .env
 ```
 
-3. **Run**
+### 4. Running the Tool
+
+#### Option 1: Command Line Interface (Recommended for First Use)
+Run directly with Python to see detailed processing logs:
 ```bash
-flask run
-# Open http://localhost:5000
+python -m src.main
+```
+Then enter company names when prompted.
+
+#### Option 2: Web Interface
+```bash
+# Kill any existing Flask processes if needed
+pkill -f flask
+
+# Start Flask with a specific port
+flask run --port=5002
+```
+Then open http://localhost:5002 in your browser.
+
+### Common Issues & Solutions
+
+#### Port Already in Use
+```bash
+# Check what's using the port (on macOS/Linux)
+lsof -i :5000
+
+# Kill the process
+pkill -f flask
+
+# Or simply try a different port
+flask run --port=5003
+```
+
+#### Environment Not Found
+If you get module not found errors:
+```bash
+# Make sure you're in the project directory
+cd emissions-data-analyzer
+
+# Reactivate the environment
+source venv/bin/activate
+```
+
+#### Need a Clean Start?
+If you want to reset everything:
+```bash
+# Deactivate current environment
+deactivate
+
+# Remove old environment
+rm -rf venv
+
+# Create fresh environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ## Example Output
@@ -139,90 +204,3 @@ MIT License - see LICENSE file
 ## Contributing
 
 Contributions welcome! Please check our issues page.
-
-
-## Quick Start Guide
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/neil-72/emissions-data-analyzer.git
-cd emissions-data-analyzer
-2. Environment Setup
-bashCopy# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-.\venv\Scripts\activate
-
-# Install requirements
-pip install -r requirements.txt
-3. Configure Environment
-Create a .env file in the project root:
-bashCopyecho "CLAUDE_API_KEY=your_claude_api_key
-BRAVE_API_KEY=your_brave_api_key" > .env
-4. Running the Tool
-Option 1: Command Line Interface
-Run directly with Python to see detailed processing logs:
-bashCopypython -m src.main
-Then enter company names when prompted.
-Option 2: Web Interface
-bashCopy# Kill any existing Flask processes if needed
-pkill -f flask
-
-# Start Flask with a specific port
-flask run --port=5002
-
-# If port is in use, try another port
-flask run --port=5003
-Then open http://localhost:5002 (or whichever port you used) in your browser.
-Common Issues
-
-Port Already in Use
-
-bashCopy# Check what's using the port (on macOS/Linux)
-lsof -i :5000
-
-# Kill the process
-pkill -f flask
-
-# Or try a different port
-flask run --port=5002
-
-Environment Not Found
-If you get module not found errors:
-
-bashCopy# Make sure you're in the project directory
-cd emissions-data-analyzer
-
-# Reactivate the environment
-source venv/bin/activate
-
-Clean Start
-If you want to reset everything:
-
-bashCopy# Deactivate current environment
-deactivate
-
-# Remove old environment
-rm -rf venv
-
-# Create fresh environment
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-Basic Usage
-
-Via Command Line:
-
-bashCopypython -m src.main
-Enter company name: microsoft
-
-Via Web Interface:
-
-
-Open http://localhost:5002 (or your chosen port)
-Enter company name or ISIN
-View results in the interface
