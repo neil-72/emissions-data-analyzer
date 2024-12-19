@@ -10,12 +10,6 @@ from ..config import (
 from ..extraction.pdf_handler import DocumentHandler
 
 class BraveSearchClient:
-    """# Handles searching for sustainability reports using Brave Search
-    # Features:
-    # - Searches for PDFs using company name and year
-    # - Validates documents contain emissions data
-    # - Filters out non-sustainability reports
-    """
     def __init__(self):
         self.api_key = BRAVE_API_KEY
         self.base_url = "https://api.search.brave.com/res/v1/web/search"
@@ -24,11 +18,7 @@ class BraveSearchClient:
             "X-Subscription-Token": self.api_key
         }
         self.document_handler = DocumentHandler()
-        
-        # Pattern to validate scope 1 mentions
         self.scope_1_pattern = re.compile(r'(?i)scope[\s\-_]*1')
-        
-        # Filter obvious non-reports
         self.negative_patterns = [
             'proxy statement',
             '10-k',
@@ -37,13 +27,6 @@ class BraveSearchClient:
         ]
 
     def search_sustainability_report(self, company_name: str) -> Optional[Dict]:
-        """# Search for a sustainability report PDF
-        # Process:
-        # 1. Try most recent year first
-        # 2. Search multiple variations of report name
-        # 3. Validate PDF has scope 1 mentions
-        # 4. Return URL and year if found
-        """
         if not company_name.strip():
             logging.error("Empty company name provided")
             return None
@@ -56,20 +39,30 @@ class BraveSearchClient:
             try:
                 response = requests.get(
                     self.base_url,
-                    headers=self.headers,
-                    params={"q": search_term, "count": MAX_RESULTS_PER_SEARCH},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Subscription-Token": self.api_key
+                    },
+                    params={
+                        "q": search_term, 
+                        "count": MAX_RESULTS_PER_SEARCH
+                    },
                     timeout=30
                 )
+                
+                if response.status_code == 422:
+                    logging.error(f"Invalid API key or request format: {response.text}")
+                    continue
+                    
                 response.raise_for_status()
                 results = response.json()
 
-                if results.get("web", {}).get("results"):
+                if "web" in results and "results" in results["web"]:
                     for result_data in results["web"]["results"]:
                         raw_title = result_data.get("title", "")
                         url = result_data["url"]
                         title = raw_title.strip().lower()
 
-                        # Skip obvious non-reports
                         if any(bad_term in title.lower() for bad_term in self.negative_patterns):
                             logging.info(f"Skipping likely non-report: {url}")
                             continue
@@ -77,7 +70,6 @@ class BraveSearchClient:
                         if str(year) in title:
                             logging.info(f"Found candidate report: {url}")
                             
-                            # Validate PDF contains scope 1 data
                             try:
                                 text_content = self.document_handler.get_document_content(url)
                                 if text_content and self.scope_1_pattern.search(text_content):
