@@ -28,7 +28,10 @@ def home():
 @app.route('/validate-isin/<isin>')
 def validate_isin(isin):
     """Validate ISIN and return company info"""
+    logging.info(f"Validating ISIN: {isin}")
+    
     if not isin_lookup.validate_isin(isin):
+        logging.warning(f"Invalid ISIN format: {isin}")
         return jsonify({
             'valid': False,
             'error': 'Invalid ISIN format'
@@ -36,11 +39,13 @@ def validate_isin(isin):
 
     company_info = isin_lookup.get_company_info(isin)
     if not company_info:
+        logging.warning(f"No company found for ISIN: {isin}")
         return jsonify({
             'valid': True,
             'error': 'Company not found'
         }), 404
 
+    logging.info(f"Found company info for ISIN {isin}: {company_info['name']}")
     return jsonify({
         'valid': True,
         'company_name': company_info['name'],
@@ -55,7 +60,9 @@ def analyze():
         identifier = data.get('identifier')
         id_type = data.get('id_type', 'company')
         
-        logging.info(f"Processing request for {identifier} (type: {id_type})")
+        logging.info(f"\n{'='*50}")
+        logging.info(f"New Analysis Request: {identifier} (Type: {id_type})")
+        logging.info(f"{'='*50}")
 
         if not identifier:
             logging.error("Empty identifier provided")
@@ -86,47 +93,49 @@ def analyze():
                 logging.info(f"Found ISIN {resolved_isin} for company {company_name}")
 
         # Search for sustainability report
-        logging.info(f"Searching for sustainability report for {company_name}")
+        logging.info("\nStarting sustainability report search...")
         report_data = search_client.search_sustainability_report(company_name)
-        if not report_data:
-            logging.warning(f"No sustainability report found for {company_name}")
-            return jsonify({'error': 'No sustainability report found'}), 404
+        
+        if report_data:
+            logging.info(f"\nReport found: {report_data['url']}")
+            logging.info("Extracting text content...")
+            
+            text_content = document_handler.get_document_content(report_data['url'])
+            if text_content:
+                logging.info(f"Successfully extracted {len(text_content):,} characters")
+                
+                logging.info("\nAnalyzing emissions data...")
+                emissions_data = analyzer.extract_emissions_data(text_content, company_name)
+                
+                if emissions_data:
+                    # Add company info if available
+                    if company_info:
+                        emissions_data['sector'] = company_info.get('sector')
+                        emissions_data['country'] = company_info.get('country')
 
-        logging.info(f"Found report at {report_data['url']}")
+                    result = {
+                        'company': company_name,
+                        'original_isin': original_isin,
+                        'report_url': report_data['url'],
+                        'report_year': report_data['year'],
+                        'emissions_data': emissions_data,
+                        'processed_at': datetime.utcnow().isoformat()
+                    }
 
-        # Extract text content
-        logging.info("Extracting text from report")
-        text_content = document_handler.get_document_content(report_data['url'])
-        if not text_content:
-            logging.error("Failed to extract text from document")
-            return jsonify({'error': 'Failed to extract text from document'}), 500
-
-        # Analyze emissions data
-        logging.info("Analyzing emissions data")
-        emissions_data = analyzer.extract_emissions_data(text_content, company_name)
-        if not emissions_data:
-            logging.warning("No emissions data found in report")
-            return jsonify({'error': 'No emissions data found'}), 404
-
-        # Add company info if available
-        if company_info:
-            emissions_data['sector'] = company_info.get('sector')
-            emissions_data['country'] = company_info.get('country')
-
-        result = {
-            'company': company_name,
-            'original_isin': original_isin,
-            'report_url': report_data['url'],
-            'report_year': report_data['year'],
-            'emissions_data': emissions_data,
-            'processed_at': datetime.utcnow().isoformat()
-        }
-
-        logging.info(f"Analysis complete for {company_name}")
-        return jsonify(result)
+                    logging.info("\nAnalysis complete ✓")
+                    return jsonify(result)
+                else:
+                    logging.error("No emissions data found in report")
+                    return jsonify({'error': 'No emissions data found'}), 404
+            else:
+                logging.error("Failed to extract text from document")
+                return jsonify({'error': 'Failed to extract text'}), 500
+        else:
+            logging.error("No sustainability report found")
+            return jsonify({'error': 'No report found'}), 404
 
     except Exception as e:
-        logging.error(f"Error processing request: {str(e)}")
+        logging.error(f"Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
