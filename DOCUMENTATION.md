@@ -5,32 +5,36 @@
 ```
 emissions-data-analyzer/
 ├── src/
-│   ├── analysis/           # Claude AI analysis
-│   │   ├── __init__.py
-│   │   └── claude_analyzer.py
-│   ├── extraction/         # PDF handling
-│   │   ├── __init__.py
-│   │   └── pdf_handler.py
-│   ├── isin/              # ISIN lookup
+│   ├── isin/              # Step 1: Company identification
 │   │   ├── __init__.py
 │   │   └── isin_lookup.py
-│   ├── search/            # Report search
-│   │   ├── __init__.py
+│   │
+│   ├── search/            # Step 2: Find reports 
+│   │   ├── __init__.py    # Uses Brave Search API
 │   │   └── brave_search.py
-│   └── web/               # Web interface
+│   │
+│   ├── extraction/        # Step 3: Extract content
+│   │   ├── __init__.py    # PDF handling & structure
+│   │   └── pdf_handler.py
+│   │
+│   ├── analysis/          # Step 4: Process data
+│   │   ├── __init__.py    # Claude AI analysis
+│   │   └── claude_analyzer.py
+│   │
+│   └── web/              # Web interface
 │       ├── __init__.py
 │       ├── app.py
 │       ├── static/
 │       └── templates/
-├── output/                # Generated JSON files
-├── cache/                 # PDF and search cache
-├── tests/                 # Unit tests
+├── output/               # Generated JSON files
+├── cache/               # PDF and search cache
+├── tests/               # Unit tests 
 │   ├── __init__.py
 │   └── test_isin_lookup.py
-├── .env                   # API keys (not in repo)
-├── .env.example           # API key template
-├── requirements.txt       # Dependencies
-└── README.md             # Project overview
+├── .env                 # API keys (not in repo)
+├── .env.example         # API key template  
+├── requirements.txt     # Dependencies
+└── README.md           # Project overview
 ```
 
 ## Configuration
