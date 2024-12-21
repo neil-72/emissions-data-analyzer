@@ -31,6 +31,7 @@ SEARCH_YEARS = [
     datetime.now().year,     # 2024
     datetime.now().year - 1, # 2023
     datetime.now().year - 2  # 2022 - some companies' latest is still 2022
+]
 MAX_RESULTS_PER_SEARCH = 5
 MAX_REPORT_AGE_YEARS = 4
 
